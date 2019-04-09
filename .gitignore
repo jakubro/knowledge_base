@@ -1,0 +1,10 @@
+# Logs
+*.log
+
+# Python
+.venv
+__pycache__
+_pytest
+.pytest_cache
+*.dist-info
+*.egg-info
