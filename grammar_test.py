@@ -4,20 +4,12 @@ import knowledge_base.grammar
 
 pp.ParserElement.enablePackrat()
 
-if __name__ == '__main__':
-    knowledge_base.grammar.Formula.runTests("""
-        x = y
-        x != y
-        
-        Not Likes
-        !Likes
-        
-        # for all x
-        *x: x
-        *x: !x != x
-        
-        # for all x: exists y: ...
-        *x, ?y: Add(x, y)
-        *x, ?y: Add(x, y) != x 
-        *x, ?y: Add(x, y) != x & y != 0
-    """)
+knowledge_base.grammar.Formula.runTests("""
+    *x: succ(x) != 0
+    *x, *y: (succ(x) = succ(y)) => x = y
+    *x: (x = 0 | ?y: x = succ(y))
+    *x: add(x, 0) = x
+    *x, *y: add(x, succ(y)) = succ(add(x, y))
+    *x: mul(x, 0) = 0
+    *x, *y: mul(x, succ(y)) = add(mul(x, y), x)
+""")
