@@ -4,7 +4,7 @@ An inference engine for first-order logic.
 
 Notes:
 
-* The grammar for first order logic is in `grammar.py`.
+* The grammar for first-order logic is in `grammar.py`.
 
 Example grammar of first-order Peano arithmetic:
 
