@@ -1,31 +1,30 @@
 """First-Order Logic Grammar
 
-Unary operators:
+Symbols:
 
-    !x                          Negation
+    MaxInt32                Constant (starts with uppercase letter or digit)
+    person_1                Variable (starts with lowercase letter)
+    FatherOf(x)             Function
+    livesIn(x, Paris)       Predicate
 
-Binary operators:
+Boolean operators:
 
-    x & y                       Conjunction
-    x | y                       Disjunction
-    x => y                      Implication
-    x <=> y                     Equivalence
+    !x                      Negation
+    x & y                   Conjunction
+    x | y                   Disjunction
+    x => y                  Implication
+    x <=> y                 Equivalence
 
-Constants and variables:
+Equality:
 
-    Length
-
-Functions and predicates:
-
-    Closed(arg1, arg2, ...)
-    x = y                       Equality
-    x != y                      Negated equality
+    x = y                   Equality
+    x != y                  Shorthand for !(x = y)
 
 Quantifiers:
 
-    *x: Number(x)               Universal quantification
-    ?x: Number(x)               Existential quantification
-    *x, ?y: x = y               Nesting (for all x, there exists y, ...)
+    *x: Number(x)           Universal quantification
+    ?x: Number(x)           Existential quantification
+    *x, ?y: x = y           Nesting (for all x, there exists y, ...)
 
 Parenthesis:
 
@@ -42,8 +41,11 @@ import syntax
 # -----------------------------------------------------------------------------
 
 def make_list(expr: pp.ParserElement,
-              optional=True, opener='(', closer=')',
+              optional=False, opener='(', closer=')',
               delim=', ', combine=False) -> pp.ParserElement:
+    """Creates enclosed delimited list. (Useful for parsing list of arguments,
+    e.g. `(a, b)` or just `()`.)"""
+
     inner = pp.delimitedList(expr, delim=delim, combine=combine)
     outer = pp.Optional(inner) if optional else inner
 
@@ -53,8 +55,10 @@ def make_list(expr: pp.ParserElement,
 
 
 def named(expr: pp.ParserElement, name: str) -> pp.ParserElement:
-    expr.setName(name)
-    expr.addParseAction(pp.replaceWith(name))
+    """Tags parsed expression and standardizes its name."""
+
+    expr.setName(name)  # tag
+    expr.addParseAction(pp.replaceWith(name))  # standardize
     return expr
 
 
@@ -62,7 +66,10 @@ def named(expr: pp.ParserElement, name: str) -> pp.ParserElement:
 # -----------------------------------------------------------------------------
 
 def make_node(type_: str):
+    """Parses list of at least one token into a `Node`."""
+
     def parse_action(tokens):
+        assert len(tokens) >= 1
         return syntax.Node(type_=type_,
                            value=tokens[0],
                            children=tokens[1:])
@@ -71,8 +78,12 @@ def make_node(type_: str):
 
 
 def unary_operator(type_: str):
+    """Parses unary operator into a `Node`."""
+
     def parse_action(tokens):
+        assert len(tokens) == 1
         tokens = tokens[0]
+        assert len(tokens) == 2
         return syntax.Node(type_=type_,
                            value=tokens[0],
                            children=tokens[1:])
@@ -81,26 +92,24 @@ def unary_operator(type_: str):
 
 
 def binary_operator(type_: str):
+    """Parses binary operator into a `Node`."""
+
     def parse_action(tokens):
+        assert len(tokens) == 1
         tokens = tokens[0]
-        return nest_binary_operators(type_=type_,
-                                     operator=tokens[1],
-                                     operands=tokens[::2])
+        return syntax.Node(type_=type_,
+                           value=tokens[1],
+                           children=tokens[::2])
 
     return parse_action
 
 
-def nest_binary_operators(type_: str, operator: str, operands: list):
-    previous = operands.pop()
-    for h in reversed(operands):
-        previous = syntax.Node(type_=type_,
-                               value=operator,
-                               children=[h, previous])
-    return previous
+def negate_binary_operator(type_: str, expr: pp.ParserElement):
+    """Replaces binary operator with its negation."""
 
-
-def negated_binary_infix_operator(type_: str, expr: pp.ParserElement):
+    # replace expressions of type `x != y` with `!(x = y)`
     def parse_action(tokens):
+        assert len(tokens) == 1
         tokens = tokens[0]
         rv = syntax.Node(type_=type_,
                          value=expr.name,
@@ -110,18 +119,21 @@ def negated_binary_infix_operator(type_: str, expr: pp.ParserElement):
     return parse_action
 
 
-def nest_formulas(type_: str):
+def nest_quantified_formulas(type_: str):
+    """Nests quantified formulas."""
+
+    # replace expressions of type `?x, ?y: foo` with `?x: ?y: foo`
     def parse_action(tokens):
         assert len(tokens) == 2
         quantifiers = tokens[0]
         formula = tokens[1]
 
-        previous = formula
+        inner = formula
         for h in reversed(quantifiers):
-            previous = syntax.Node(type_=type_,
-                                   value=h,
-                                   children=[previous])
-        return previous
+            inner = syntax.Node(type_=type_,
+                                value=h,
+                                children=[inner])
+        return inner
 
     return parse_action
 
@@ -129,21 +141,21 @@ def nest_formulas(type_: str):
 # Grammar
 # -----------------------------------------------------------------------------
 
-Symbol = pp.Forward()
+ConstantSymbol = pp.Forward()
+VariableSymbol = pp.Forward()
+Constant = pp.Forward()
 Variable = pp.Forward()
+Function = pp.Forward()
+Predicate = pp.Forward()
+Term = pp.Forward()
+AtomicFormula = pp.Forward()
+ComplexFormula = pp.Forward()
 Formula = pp.Forward()
 QuantifiedFormula = pp.Forward()
 QuantifiedVariable = pp.Forward()
-Term = pp.Forward()
-Function = pp.Forward()
 
 # Keywords
 # -----------------------------
-
-# Equality
-VALUE_EQUAL = named(pp.Literal('='),
-                    syntax.EQUALITY)
-NOT_VALUE_EQUAL = pp.Literal('!=')
 
 # Unary operators
 NOT = named(pp.CaselessKeyword('Not') ^ pp.Literal('!'),
@@ -159,6 +171,11 @@ IMPLIES = named(pp.CaselessKeyword('Implies') ^ pp.Literal('=>'),
 EQUALS = named(pp.CaselessKeyword('Equals') ^ pp.Literal('<=>'),
                syntax.EQUIVALENCE)
 
+# Equality
+VALUE_EQUAL = named(pp.Literal('='),
+                    syntax.EQUALITY)
+VALUE_NOT_EQUAL = pp.Literal('!=')
+
 # Quantifiers
 FOR_ALL = named(pp.CaselessKeyword('ForAll') ^ pp.Literal('*'),
                 syntax.UNIVERSAL_QUANTIFIER)
@@ -168,18 +185,31 @@ EXISTS = named(pp.CaselessKeyword('Exists') ^ pp.Literal('?'),
 # Grammar
 # -----------------------------
 
-Keyword = (NOT | VALUE_EQUAL | NOT_VALUE_EQUAL |
-           AND | OR | IMPLIES | EQUALS |
+Keyword = (NOT | AND | OR | IMPLIES | EQUALS |
+           VALUE_EQUAL | VALUE_NOT_EQUAL |
            FOR_ALL | EXISTS)
 
-Symbol << (~Keyword + ~pp.Literal('_') + pp.Word(pp.alphanums))
+ConstantSymbol << (~Keyword + ~pp.Literal('_') +
+                   pp.Word(pp.alphanums.upper(), pp.alphanums + '_'))
 
-Variable << Symbol.copy().addParseAction(make_node(syntax.VARIABLE))
+Constant << ConstantSymbol
+Constant.addParseAction(make_node(syntax.CONSTANT))
 
-Formula << pp.infixNotation((Term ^ QuantifiedFormula), [
+VariableSymbol << (~Keyword + ~pp.Literal('_') +
+                   pp.Word(pp.alphas.lower(), pp.alphanums + '_'))
+
+Variable << VariableSymbol
+Variable.addParseAction(make_node(syntax.VARIABLE))
+
+Formula << (AtomicFormula ^ ComplexFormula ^ QuantifiedFormula)
+
+AtomicFormula << (Predicate ^ pp.infixNotation(Term, [
     (VALUE_EQUAL, 2, pp.opAssoc.LEFT, binary_operator(syntax.FUNCTION)),
-    (NOT_VALUE_EQUAL, 2, pp.opAssoc.LEFT,
-     negated_binary_infix_operator(syntax.FUNCTION, VALUE_EQUAL)),
+    (VALUE_NOT_EQUAL, 2, pp.opAssoc.LEFT,
+     negate_binary_operator(syntax.FUNCTION, VALUE_EQUAL)),
+]))
+
+ComplexFormula << pp.infixNotation(AtomicFormula ^ QuantifiedFormula, [
     (NOT, 1, pp.opAssoc.RIGHT, unary_operator(syntax.FORMULA)),
     (AND, 2, pp.opAssoc.LEFT, binary_operator(syntax.FORMULA)),
     (OR, 2, pp.opAssoc.LEFT, binary_operator(syntax.FORMULA)),
@@ -189,12 +219,26 @@ Formula << pp.infixNotation((Term ^ QuantifiedFormula), [
 
 QuantifiedFormula << (pp.Group(pp.delimitedList(QuantifiedVariable)) +
                       pp.Suppress(':') +
-                      Formula).addParseAction(nest_formulas(syntax.FORMULA))
+                      Formula)
+QuantifiedFormula.addParseAction(nest_quantified_formulas(syntax.FORMULA))
 
-QuantifiedVariable << ((FOR_ALL ^ EXISTS) +
-                       Variable).addParseAction(make_node(syntax.QUANTIFIER))
+QuantifiedVariable << ((FOR_ALL ^ EXISTS) + Variable)
+QuantifiedVariable.addParseAction(make_node(syntax.QUANTIFIER))
 
-Term << (Function ^ Variable)
+Term << (Constant ^ Variable ^ Function)
 
-Function << (Symbol +
-             make_list(Term)).addParseAction(make_node(syntax.FUNCTION))
+Function << (ConstantSymbol + make_list(Term))
+Function.addParseAction(make_node(syntax.FUNCTION))
+
+Predicate << (VariableSymbol + make_list(Term))
+Predicate.addParseAction(make_node(syntax.PREDICATE))
+
+
+# Parsing
+# -----------------------------------------------------------------------------
+
+def parse(s: str) -> syntax.Node:
+    tokens = Formula.parseString(s)
+    assert len(tokens) == 1
+    rv: syntax.Node = tokens[0]
+    return rv.normalize()

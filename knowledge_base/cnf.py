@@ -1,60 +1,20 @@
-from typing import List, Tuple, TypeVar, Union
+from typing import List, Tuple, Union
 
 import syntax
 from utils import incrementdefault
 
-T = TypeVar('T')
 T_Value = Union[str, syntax.Node]
 T_Children = List[syntax.Node]
 
 
-# Verification
-# -----------------------------------------------------------------------------
-
-def is_cnf(node: syntax.Node) -> bool:
-    return (_is_cnf_conjunction(node)
-            or _is_cnf_disjunction(node)
-            or _is_cnf_atom(node))
-
-
-def _is_cnf_conjunction(node: syntax.Node) -> bool:
-    return (node.is_conjunction()
-            and all((_is_cnf_conjunction(x)
-                     or _is_cnf_disjunction(x)
-                     or _is_cnf_atom(x))
-                    for x in node.children))
-
-
-def _is_cnf_disjunction(node: syntax.Node) -> bool:
-    return (_is_term(node)
-            or (node.is_disjunction()
-                and all((_is_cnf_disjunction(x)
-                         or _is_cnf_atom(x))
-                        for x in node.children)))
-
-
-def _is_cnf_atom(node: syntax.Node) -> bool:
-    return (_is_term(node)
-            or (node.is_negation()
-                and _is_term(node.children[0])))
-
-
-def _is_term(node: syntax.Node) -> bool:
-    return (node.is_variable()
-            or (node.is_function()
-                and all(_is_term(x) for x in node.children)))
-
-
-# Conversion
-# -----------------------------------------------------------------------------
-
-def convert_to_cnf(node: T) -> T:
+def convert_to_cnf(node: syntax.Node) -> syntax.Node:
     """Converts node to CNF representation.
 
     :param node: The node to convert.
     :returns: Node in CNF.
     """
 
+    node = node.fold()
     for f in [_eliminate_biconditional,
               _eliminate_implication,
               _propagate_negation,
@@ -63,6 +23,9 @@ def convert_to_cnf(node: T) -> T:
               _distribute_conjunction]:
         state = syntax.WalkState.make()
         node = syntax.walk(node, state, f)
+
+    node = node.normalize()
+    assert node.is_cnf()
     return node
 
 
@@ -147,9 +110,9 @@ def _propagate_negation(node: syntax.Node, *args) -> syntax.Node:
     # Flip Quantifiers
     elif child.is_quantified():
         qtype = (syntax.EXISTENTIAL_QUANTIFIER
-                 if child.is_universal_quantifier()
+                 if child.is_universally_quantified()
                  else syntax.UNIVERSAL_QUANTIFIER)
-        qname = child.get_quantified_variable().get_variable_name()
+        qname = child.get_quantified_variable().value
         rv = syntax.make_quantifier(qtype, qname)
 
     if rv is None:
@@ -182,7 +145,7 @@ def _standardize_variables(node: syntax.Node,
         return node
 
     elif node.is_quantified():
-        old = node.get_quantified_variable().get_variable_name()
+        old = node.get_quantified_variable().value
         new = _new_variable_name(state)
         state.stack.append((old, new))
         qtype = node.get_quantifier_type()
@@ -233,7 +196,7 @@ def _skolemize(node: syntax.Node, state: syntax.WalkState) -> syntax.Node:
 
     elif node.is_quantified():
         qv = node.get_quantified_variable()
-        old = qv.get_variable_name()
+        old = qv.value
         qtype = node.get_quantifier_type()
 
         quantifiers = [t for t, n, _ in stack]
@@ -257,10 +220,10 @@ def _skolemize(node: syntax.Node, state: syntax.WalkState) -> syntax.Node:
         for qtype, old, new in stack:
             if qtype == syntax.UNIVERSAL_QUANTIFIER:
                 args.append(old)
-            if old == node.get_variable_name():
+            if old == node.value:
                 if args:
                     # replace with a Skolem function
-                    rv = syntax.make_function(new, args)
+                    rv = syntax.make_function(new, *args)
                     seen.extend(id(r) for r in rv.children)
                     return rv
                 else:

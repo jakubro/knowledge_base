@@ -1,24 +1,26 @@
 import copy
-from typing import Callable, List, NamedTuple, TypeVar, Union
+import json
+from typing import (
+    Callable, Dict, Iterator, List, NamedTuple, TypeVar, Union,
+)
 
 import yaml
 import yaml.representer
 
 T = TypeVar('T')
 
-# Types
+# Node Types
 # -----------------------------------------------------------------------------
 
+CONSTANT = 'Constant'
+VARIABLE = 'Variable'
+FUNCTION = 'Function'
+PREDICATE = 'Predicate'
 FORMULA = 'Formula'
-QUANTIFIER = 'Quantifier'  # defines quantified variable
-VARIABLE = 'Variable'  # variable (quantified) or a constant (not-quantified)
-FUNCTION = 'Function'  # predicate or function
+QUANTIFIER = 'Quantifier'
 
-# Values
+# Node Values
 # -----------------------------------------------------------------------------
-
-# Equality
-EQUALITY = 'Equality'  # 2-ary infix function
 
 # Unary operators
 NEGATION = 'Not'
@@ -29,6 +31,9 @@ DISJUNCTION = 'Or'
 IMPLICATION = 'Implies'
 EQUIVALENCE = 'Equals'
 
+# Equality
+EQUALITY = 'Equality'
+
 # Quantifiers
 UNIVERSAL_QUANTIFIER = 'ForAll'
 EXISTENTIAL_QUANTIFIER = 'Exists'
@@ -38,12 +43,57 @@ EXISTENTIAL_QUANTIFIER = 'Exists'
 
 T_Value = Union[str, 'Node']
 T_Children = List['Node']
+T_Subsitution = Dict[str, 'Node']  # replaces term (value) with variable (key)
 
 
 class Node(NamedTuple):
     type_: str
-    value: T_Value
-    children: T_Children
+    value: T_Value  # node if current node is quantified formula
+    children: T_Children  # node has 0-2 children
+
+    def _is_atomic(self) -> bool:
+        return (self.is_constant()
+                or self.is_variable()
+                or self.is_function()
+                or self.is_predicate()
+                or (self.is_negation() and self.children[0]._is_atomic()))
+
+    # Constants
+    # -------------------------------------------------------------------------
+
+    def is_constant(self) -> bool:
+        return self.type_ == CONSTANT
+
+    # Variables
+    # -------------------------------------------------------------------------
+
+    def is_variable(self) -> bool:
+        return self.type_ == VARIABLE
+
+    # Functions
+    # -------------------------------------------------------------------------
+
+    def is_function(self) -> bool:
+        return self.type_ == FUNCTION
+
+    def is_equality(self) -> bool:
+        return (self.is_function()
+                and self.value == EQUALITY)
+
+    # Predicates
+    # -------------------------------------------------------------------------
+
+    def is_predicate(self) -> bool:
+        return self.type_ == PREDICATE
+
+    # Formulas
+    # -------------------------------------------------------------------------
+
+    def is_formula(self) -> bool:
+        return self.type_ == FORMULA
+
+    # Complex Formulas
+    # -------------------------------------------------------------------------
 
     def negate(self) -> 'Node':
         if self.is_negation():
@@ -52,15 +102,6 @@ class Node(NamedTuple):
             return children[0]
         else:
             return Node(type_=FORMULA, value=NEGATION, children=[self])
-
-    def is_formula(self) -> bool:
-        return self.type_ == FORMULA
-
-    def is_quantified(self) -> bool:
-        value = self.value
-        return (self.is_formula()
-                and isinstance(value, Node)
-                and value.is_quantifier())
 
     def is_negation(self) -> bool:
         return (self.is_formula()
@@ -82,6 +123,15 @@ class Node(NamedTuple):
         return (self.is_formula()
                 and self.value == EQUIVALENCE)
 
+    # Quantified Formulas
+    # -------------------------------------------------------------------------
+
+    def is_quantified(self) -> bool:
+        value = self.value
+        return (self.is_formula()
+                and isinstance(value, Node)
+                and value.is_quantifier())
+
     def is_quantifier(self) -> bool:
         return self.type_ == QUANTIFIER
 
@@ -90,47 +140,173 @@ class Node(NamedTuple):
             return self.value.get_quantifier_type()
         elif self.is_quantifier():
             return self.value
-        raise TypeError()
+        else:
+            raise TypeError()
 
     def get_quantified_variable(self) -> 'Node':
         if self.is_quantified():
             return self.value.get_quantified_variable()
         elif self.is_quantifier():
-            children = self.children
-            assert len(children) == 1
-            return children[0]
+            return self.children[0]
         else:
             raise TypeError()
 
-    def is_universal_quantifier(self) -> bool:
-        return (self.is_quantifier()
-                and self.value == UNIVERSAL_QUANTIFIER)
+    def is_universally_quantified(self) -> bool:
+        return self.get_quantifier_type() == UNIVERSAL_QUANTIFIER
 
-    def is_existential_quantifier(self) -> bool:
-        return (self.is_quantifier()
-                and self.value == EXISTENTIAL_QUANTIFIER)
+    def is_existentially_quantified(self) -> bool:
+        return self.get_quantifier_type() == EXISTENTIAL_QUANTIFIER
 
-    def is_variable(self) -> bool:
-        return self.type_ == VARIABLE
+    # Substitutions
+    # -------------------------------------------------------------------------
 
-    def get_variable_name(self) -> str:
+    def occurs_in(self, node: 'Node') -> bool:
         if not self.is_variable():
             raise TypeError()
-        return self.value
+        if node.is_function():
+            return any((c.value == self.value
+                        if c.is_variable()
+                        else self.occurs_in(c))
+                       for c in node.children)
+        else:
+            return False
 
-    def is_function(self) -> bool:
-        return self.type_ == FUNCTION
+    def apply(self, subsitutions: T_Subsitution) -> 'Node':
+        if self.is_variable():
+            for k, v in subsitutions.items():
+                if k == self.value:
+                    return v
+            return self
+        else:
+            return Node(type_=self.type_,
+                        value=self.value,
+                        children=[c.apply(subsitutions)
+                                  for c in self.children])
 
-    def is_equality(self) -> bool:
-        return (self.is_function()
-                and self.value == EQUALITY)
+    # CNF
+    # -------------------------------------------------------------------------
 
-    def dumps(self, compact: bool = False) -> str:
-        data = _dump(self, compact)
-        return yaml.dump(data, Dumper=_YamlDumper)
+    def is_cnf(self) -> bool:
+        return (self._is_cnf_conjunction()
+                or self._is_cnf_disjunction()
+                or self._is_atomic())
 
-    def __repr__(self):
-        return self.dumps(compact=True)
+    def _is_cnf_conjunction(self) -> bool:
+        return (self.is_conjunction()
+                and all((x._is_cnf_conjunction()
+                         or x._is_cnf_disjunction()
+                         or x._is_atomic())
+                        for x in self.children))
+
+    def _is_cnf_disjunction(self) -> bool:
+        return (self.is_disjunction()
+                and all((x._is_cnf_disjunction()
+                         or x._is_atomic())
+                        for x in self.children))
+
+    def as_disjunction_clauses(self) -> Iterator['Node']:
+        assert self.is_cnf()
+        if self.is_conjunction():
+            for k in self.children:
+                yield from k.as_disjunction_clauses()
+        else:
+            yield self
+
+    # Normalization
+    # -------------------------------------------------------------------------
+
+    def normalize(self) -> 'Node':
+        rv = self
+        rv = rv.unfold()
+        rv = rv.sort()
+        return rv
+
+    def unfold(self) -> 'Node':
+        """Flattens nodes of the same type into one node."""
+
+        children = [k.unfold() for k in self.children]
+
+        if self._is_foldable():
+            flattened = []
+            for k in children:
+                if k.type_ == self.type_ and k.value == self.value:
+                    flattened.extend(k.children)
+                else:
+                    flattened.append(k)
+            children = flattened
+
+        return Node(type_=self.type_,
+                    value=self.value,
+                    children=children)
+
+    def fold(self) -> 'Node':
+        children = [k.fold() for k in self.children]
+
+        if self._is_foldable():
+            inner = children.pop()
+            for k in reversed(children):
+                inner = Node(type_=self.type_,
+                             value=self.value,
+                             children=[k, inner])
+            return inner
+        else:
+            return Node(type_=self.type_,
+                        value=self.value,
+                        children=children)
+
+    def _is_foldable(self) -> bool:
+        return (self.is_conjunction()
+                or self.is_disjunction()
+                or self.is_implication()
+                or self.is_equivalence()
+                or self.is_equality())
+
+    def sort(self) -> 'Node':
+        """Sorts nodes lexicographically by symbol names."""
+
+        children = [k.sort() for k in self.children]
+
+        if self._is_sortable():
+            children = list(sorted(children))
+
+        return Node(type_=self.type_,
+                    value=self.value,
+                    children=children)
+
+    def _is_sortable(self) -> bool:
+        return (self.is_conjunction()
+                or self.is_disjunction()
+                or self.is_equivalence()
+                or self.is_equality())
+
+    # Serialization
+    # -------------------------------------------------------------------------
+
+    def dumps(self,
+              compact: bool = False,
+              format_: str = 'yaml',
+              **kwargs) -> str:
+        rv = _dump(self, compact)
+        if format_ == 'yaml':
+            return yaml.dump(rv, **kwargs, Dumper=_YamlDumper)
+        elif format_ == 'json':
+            return json.dumps(rv, **kwargs)
+        else:
+            raise ValueError('format_')
+
+    @classmethod
+    def loads(cls, value):
+        try:
+            # loads JSON as well, since JSON is a subset of YAML
+            value = yaml.load(value)
+        except AttributeError:
+            pass
+        rv = _load(value)
+        rv = rv.normalize()
+        return rv
+
+    # Formatting
+    # -------------------------------------------------------------------------
 
     def __str__(self):
         if self.is_formula():
@@ -141,29 +317,28 @@ class Node(NamedTuple):
                 child = self.children[0]
                 return f'!{self._enclose(child)}'
             else:
-                a, b = self.children
-                return (f'{self._enclose(a)} '
-                        f'{self._get_operator_str()} '
-                        f'{self._enclose(b)}')
+                op = f' {self._operator_str()} '
+                return op.join(self._enclose(x) for x in self.children)
 
         elif self.is_quantifier():
             child = self.children[0]
-            return f'{self._get_quantifier_str()}{self._enclose(child)}'
+            return f'{self._quantifier_str()}{self._enclose(child)}'
 
-        elif self.is_variable():
+        elif self.is_constant() or self.is_variable():
             return self.value
 
-        elif self.is_function():
+        elif self.is_function() or self.is_predicate():
             if self.is_equality():
-                a, b = self.children
-                return f'{self._enclose(a)} = {self._enclose(b)}'
+                return ' = '.join(self._enclose(x) for x in self.children)
             else:
                 args = ', '.join((self._enclose(x) for x in self.children))
                 return f'{self.value}({args})'
 
         raise ValueError()
 
-    def _get_operator_str(self) -> str:
+    __repr__ = __str__
+
+    def _operator_str(self) -> str:
         """Operator string."""
 
         if self.is_conjunction():
@@ -172,35 +347,43 @@ class Node(NamedTuple):
             return '|'
         elif self.is_implication():
             return '=>'
-        else:
-            assert self.is_equivalence()
+        elif self.is_equivalence():
             return '<=>'
+        else:
+            return self.value
 
-    def _get_quantifier_str(self) -> str:
+    def _quantifier_str(self) -> str:
         """Quantifier string."""
 
-        if self.is_universal_quantifier():
+        if self.is_universally_quantified():
             return '*'
         else:
-            assert self.is_existential_quantifier()
+            assert self.is_existentially_quantified()
             return '?'
 
-    def _enclose(self, node) -> str:
+    def _enclose(self, child) -> str:
         """Parenthesize the node."""
 
-        return f'({node})' if self._should_enclose(node) else str(node)
+        return (f'({child})'
+                if self._should_enclose(child)
+                else str(child))
 
-    def _should_enclose(self, node) -> bool:
+    def _should_enclose(self, child: 'Node') -> bool:
         """Whether the node should be parenthesized."""
 
-        return (isinstance(node, Node)
-                and self.is_formula()
-                and len(self.children) == 2
-                and node.value != self.value
-                and (node.is_formula() or node.is_equality()))
+        ops = (NEGATION, CONJUNCTION, DISJUNCTION,
+               EQUALITY, EQUIVALENCE, IMPLICATION)
+
+        try:
+            return ops.index(self.value) < ops.index(child.value)
+        except ValueError:
+            return not (child.is_constant()
+                        or child.is_variable()
+                        or child.is_function()
+                        or child.is_predicate())
 
 
-# Syntax Tree Navigation
+# Navigation
 # -----------------------------------------------------------------------------
 
 def walk(node: T,
@@ -256,7 +439,7 @@ class WalkState(NamedTuple):
                 else WalkState(context={}, stack=[]))
 
 
-# Syntax Tree Builders
+# Builders
 # -----------------------------------------------------------------------------
 
 def make_formula(value: T_Value, children: T_Children) -> Node:
@@ -271,7 +454,7 @@ def make_quantifier(value: T_Value, name: str) -> Node:
                 children=[make_variable(name)])
 
 
-def make_function(value: str, args: List[str]) -> Node:
+def make_function(value: str, *args: str) -> Node:
     return Node(type_=FUNCTION,
                 value=value,
                 children=[make_variable(a) for a in args])
@@ -283,21 +466,21 @@ def make_variable(name: str) -> Node:
                 children=[])
 
 
-# Helpers
+# Serialization
 # -----------------------------------------------------------------------------
 
 class _YamlDumper(yaml.Dumper):
-    pass
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # preserve order of dict keys
+        self.add_representer(
+            dict,
+            lambda s, data: yaml.representer.SafeRepresenter.represent_dict(
+                s,
+                data.items()))
 
 
-_YamlDumper.add_representer(
-    dict,
-    lambda self, data: yaml.representer.SafeRepresenter.represent_dict(
-        self,
-        data.items()))
-
-
-def _dump(node, compact: bool = False):
+def _dump(node, compact: bool):
     if isinstance(node, Node):
         value = _dump(node.value, compact)
         children = _dump(node.children, compact)
@@ -315,4 +498,21 @@ def _dump(node, compact: bool = False):
             for k, v in node.items()
         }
     else:
+        assert isinstance(node, str)
+        return node
+
+
+def _load(node):
+    if isinstance(node, dict):
+        assert len(node) == 1
+        type_, node = next(iter(node.items()))
+        value = _load(node['Value'])
+        children = _load(node.get('Children', []))
+        return Node(type_=type_,
+                    value=value,
+                    children=children)
+    elif isinstance(node, list):
+        return [_load(k) for k in node]
+    else:
+        assert isinstance(node, str)
         return node
