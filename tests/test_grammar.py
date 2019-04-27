@@ -13,11 +13,11 @@ from knowledge_base.grammar import parse
     ('P', {'Constant': {'Value': 'P'}}),
     ('x', {'Variable': {'Value': 'x'}}),
 
-    # Functions and Predicates or 0-arity are Constants and Variables
+    # Functions and Predicates of 0-arity are Constants and Variables
     ('H()', {'Constant': {'Value': 'H'}}),
     ('f()', {'Variable': {'Value': 'f'}}),
 
-    # Functions and Predicates or arity >= 1
+    # Functions and Predicates of arity >= 1
     ('H(x, y, P, Q)', {
         'Function': {
             'Value': 'H',
