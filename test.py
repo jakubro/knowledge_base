@@ -1,8 +1,8 @@
 import pyparsing as pp
 import pytest
 
-import knowledge_base.cnf
-import knowledge_base.grammar
+import knowledge_base.cnf as cnf
+import knowledge_base.grammar as grammar
 
 pp.ParserElement.enablePackrat()
 
@@ -22,7 +22,7 @@ tests = """
     x = y                   # Equation
     x != y
 
-    child(x, parent(x), Loves(Paris))
+    livesIn(Child(x, Parent(x)), CapitalOf(France))
 
     ?x: x = x
     *x: x = x
@@ -38,7 +38,7 @@ tests = """
     d & c & b | a
     d & c & (b | a)
     
-    *x, ?y: (p(x) | q(x)) & r(x, y) => ?z: (r(x, z) = r(y, z)) & (p(z) = q(z))
+    *x, ?y: (p(x) | q(x)) & r(x, y) => ?z: (H(x, z) = H(y, z)) & (J(z) = J(z))
     
     r(x, F(x), M(B))
     r(B, F(B), y)
@@ -78,11 +78,11 @@ def test(s: str):
 
 
 def make_cnf(s: str):
-    node = knowledge_base.grammar.parse(s)
+    node = grammar.parse(s)
     print("Parsed:\t", node)
     # print("\n" + node.dumps(compact=False) + "\n")
 
-    converted = knowledge_base.cnf.convert_to_cnf(node)
+    converted = cnf.convert_to_cnf(node)
     print("CNF:\t", converted)
     # print("\n" + converted.dumps(compact=False) + "\n")
 

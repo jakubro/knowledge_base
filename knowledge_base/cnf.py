@@ -1,7 +1,7 @@
 from typing import List, Tuple, Union
 
-import syntax
-from utils import incrementdefault
+import knowledge_base.syntax as syntax
+import knowledge_base.utils as utils
 
 T_Value = Union[str, syntax.Node]
 T_Children = List[syntax.Node]
@@ -14,7 +14,7 @@ def convert_to_cnf(node: syntax.Node) -> syntax.Node:
     :returns: Node in CNF.
     """
 
-    node = node.fold()
+    node = node.denormalize()
     for f in [_eliminate_biconditional,
               _eliminate_implication,
               _propagate_negation,
@@ -269,7 +269,7 @@ def _new_variable_name(state: syntax.WalkState) -> str:
     """:returns: New unique variable name."""
 
     ctx = state.context
-    counter = incrementdefault(ctx, 'var_counter')
+    counter = utils.incrementdefault(ctx, 'var_counter')
     return f'_v{counter}'
 
 
@@ -277,7 +277,7 @@ def _new_constant_name(state: syntax.WalkState) -> str:
     """:returns: New unique constant name."""
 
     ctx = state.context
-    counter = incrementdefault(ctx, 'const_counter')
+    counter = utils.incrementdefault(ctx, 'const_counter')
     return f'_C{counter}'
 
 
@@ -285,5 +285,5 @@ def _new_function_name(state: syntax.WalkState) -> str:
     """:returns: New unique function name."""
 
     ctx = state.context
-    counter = incrementdefault(ctx, 'func_counter')
+    counter = utils.incrementdefault(ctx, 'func_counter')
     return f'_H{counter}'

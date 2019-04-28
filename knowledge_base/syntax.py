@@ -1,8 +1,6 @@
 import copy
 import json
-from typing import (
-    Callable, Dict, Iterator, List, NamedTuple, TypeVar, Union,
-)
+from typing import Callable, Dict, Iterator, List, NamedTuple, TypeVar, Union
 
 import yaml
 import yaml.representer
@@ -11,6 +9,8 @@ T = TypeVar('T')
 
 # Node Types
 # -----------------------------------------------------------------------------
+
+# These are the only possible values to appear under `Node.type_`.
 
 CONSTANT = 'Constant'
 VARIABLE = 'Variable'
@@ -21,6 +21,9 @@ QUANTIFIER = 'Quantifier'
 
 # Node Values
 # -----------------------------------------------------------------------------
+
+# These are one of the possible values to appear under `Node.value`. Remaining
+# possible values are constant and variable symbols.
 
 # Unary operators
 NEGATION = 'Not'
@@ -47,9 +50,33 @@ T_Subsitution = Dict[str, 'Node']  # replaces term (value) with variable (key)
 
 
 class Node(NamedTuple):
+    """Syntax tree node."""
+
+    #: Type of the node.
+    #:
+    #: E.g.: constant, variable symbol, ...
     type_: str
-    value: T_Value  # node if current node is quantified formula
-    children: T_Children  # node has 0-2 children
+
+    #: Value of the node.
+    #:
+    #: E.g.: Name of the symbol, name of the operator, ...
+    #: If this node is a quantified formula, then value is node which contains
+    #: the quantified variable.
+    value: T_Value
+
+    #: Children of the node.
+    #:
+    #: Node has 0-N children.
+    children: T_Children
+
+    # Expressions
+    # -------------------------------------------------------------------------
+
+    def is_formula(self) -> bool:
+        return self.type_ == FORMULA
+
+    # Atomic Expressions
+    # -------------------------------------------------------------------------
 
     def _is_atomic(self) -> bool:
         return (self.is_constant()
@@ -58,20 +85,11 @@ class Node(NamedTuple):
                 or self.is_predicate()
                 or (self.is_negation() and self.children[0]._is_atomic()))
 
-    # Constants
-    # -------------------------------------------------------------------------
-
     def is_constant(self) -> bool:
         return self.type_ == CONSTANT
 
-    # Variables
-    # -------------------------------------------------------------------------
-
     def is_variable(self) -> bool:
         return self.type_ == VARIABLE
-
-    # Functions
-    # -------------------------------------------------------------------------
 
     def is_function(self) -> bool:
         return self.type_ == FUNCTION
@@ -80,19 +98,10 @@ class Node(NamedTuple):
         return (self.is_function()
                 and self.value == EQUALITY)
 
-    # Predicates
-    # -------------------------------------------------------------------------
-
     def is_predicate(self) -> bool:
         return self.type_ == PREDICATE
 
-    # Formulas
-    # -------------------------------------------------------------------------
-
-    def is_formula(self) -> bool:
-        return self.type_ == FORMULA
-
-    # Complex Formulas
+    # Complex Expressions
     # -------------------------------------------------------------------------
 
     def negate(self) -> 'Node':
@@ -123,7 +132,7 @@ class Node(NamedTuple):
         return (self.is_formula()
                 and self.value == EQUIVALENCE)
 
-    # Quantified Formulas
+    # Quantified Expressions
     # -------------------------------------------------------------------------
 
     def is_quantified(self) -> bool:
@@ -193,15 +202,12 @@ class Node(NamedTuple):
 
     def _is_cnf_conjunction(self) -> bool:
         return (self.is_conjunction()
-                and all((x._is_cnf_conjunction()
-                         or x._is_cnf_disjunction()
-                         or x._is_atomic())
+                and all((x._is_cnf_disjunction() or x._is_atomic())
                         for x in self.children))
 
     def _is_cnf_disjunction(self) -> bool:
         return (self.is_disjunction()
-                and all((x._is_cnf_disjunction()
-                         or x._is_atomic())
+                and all(x._is_atomic()
                         for x in self.children))
 
     def as_disjunction_clauses(self) -> Iterator['Node']:
@@ -217,14 +223,19 @@ class Node(NamedTuple):
 
     def normalize(self) -> 'Node':
         rv = self
-        rv = rv.unfold()
-        rv = rv.sort()
+        rv = rv._unfold()
+        rv = rv._sort()
         return rv
 
-    def unfold(self) -> 'Node':
+    def denormalize(self) -> 'Node':
+        rv = self
+        rv = rv._fold()
+        return rv
+
+    def _unfold(self) -> 'Node':
         """Flattens nodes of the same type into one node."""
 
-        children = [k.unfold() for k in self.children]
+        children = [k._unfold() for k in self.children]
 
         if self._is_foldable():
             flattened = []
@@ -239,8 +250,8 @@ class Node(NamedTuple):
                     value=self.value,
                     children=children)
 
-    def fold(self) -> 'Node':
-        children = [k.fold() for k in self.children]
+    def _fold(self) -> 'Node':
+        children = [k._fold() for k in self.children]
 
         if self._is_foldable():
             inner = children.pop()
@@ -261,10 +272,10 @@ class Node(NamedTuple):
                 or self.is_equivalence()
                 or self.is_equality())
 
-    def sort(self) -> 'Node':
+    def _sort(self) -> 'Node':
         """Sorts nodes lexicographically by symbol names."""
 
-        children = [k.sort() for k in self.children]
+        children = [k._sort() for k in self.children]
 
         if self._is_sortable():
             children = list(sorted(children))
@@ -472,7 +483,11 @@ def make_variable(name: str) -> Node:
 class _YamlDumper(yaml.Dumper):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # preserve order of dict keys
+
+        # Preserve order of dict keys. (Default implementation sorts them
+        # alphabetically. Note that there's no functional reason for doing
+        # this, it just feel more easier to me to skim through the tree if I
+        # see at first the `Value` and then the `Children`.)
         self.add_representer(
             dict,
             lambda s, data: yaml.representer.SafeRepresenter.represent_dict(
@@ -480,29 +495,41 @@ class _YamlDumper(yaml.Dumper):
                 data.items()))
 
 
-def _dump(node, compact: bool):
+T_Deserialized = Union[Node, List[Node], str]
+T_Serialized = Union[dict, List[dict], str]
+
+
+def _dump(node: T_Deserialized, compact: bool) -> T_Serialized:
+    """Makes serializable representation of the syntax tree."""
+
     if isinstance(node, Node):
         value = _dump(node.value, compact)
         children = _dump(node.children, compact)
-        if compact and node.is_variable():
+        if compact and (node.is_constant() or node.is_variable()):
             return value
         rv = {'Value': value}
         if children:
             rv['Children'] = children
         return {node.type_: rv}
+
     elif isinstance(node, list):
         return [_dump(k, compact) for k in node]
+
     elif isinstance(node, dict):
         return {
             _dump(k, compact): _dump(v, compact)
             for k, v in node.items()
         }
+
     else:
         assert isinstance(node, str)
         return node
 
 
-def _load(node):
+def _load(node: T_Serialized) -> T_Deserialized:
+    """Makes syntax tree from the serialized representation. Inverse of
+    `_dump(original, compact=False)`. """
+
     if isinstance(node, dict):
         assert len(node) == 1
         type_, node = next(iter(node.items()))
@@ -511,8 +538,10 @@ def _load(node):
         return Node(type_=type_,
                     value=value,
                     children=children)
+
     elif isinstance(node, list):
         return [_load(k) for k in node]
+
     else:
         assert isinstance(node, str)
         return node

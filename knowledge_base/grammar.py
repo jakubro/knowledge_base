@@ -34,7 +34,7 @@ Parenthesis:
 
 import pyparsing as pp
 
-import syntax
+import knowledge_base.syntax as syntax
 
 
 # Helpers
@@ -44,7 +44,7 @@ def make_list(expr: pp.ParserElement,
               optional=False, opener='(', closer=')',
               delim=', ', combine=False) -> pp.ParserElement:
     """Creates enclosed delimited list. (Useful for parsing list of arguments,
-    e.g. `(a, b)` or just `()`.)"""
+    e.g. `(a, b)` or just an empty list, `()`.)"""
 
     inner = pp.delimitedList(expr, delim=delim, combine=combine)
     outer = pp.Optional(inner) if optional else inner
@@ -238,7 +238,18 @@ Predicate.addParseAction(make_node(syntax.PREDICATE))
 # -----------------------------------------------------------------------------
 
 def parse(s: str) -> syntax.Node:
-    tokens = Formula.parseString(s)
-    assert len(tokens) == 1
-    rv: syntax.Node = tokens[0]
-    return rv.normalize()
+    """Parses First-Order Logic expression into `Node`.
+
+    :param s: The expression to parse.
+    :returns: Syntax tree representing the parsed expression.
+    :raises ValueError: If the expression does not have proper syntax.
+    """
+
+    try:
+        tokens = Formula.parseString(s, parseAll=True)
+    except pp.ParseException as e:
+        raise ValueError(str(e)) from e
+    else:
+        assert len(tokens) == 1
+        rv: syntax.Node = tokens[0]
+        return rv.normalize()

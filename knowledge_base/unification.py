@@ -1,4 +1,4 @@
-import syntax
+import knowledge_base.syntax as syntax
 
 
 def unify(p: syntax.Node, q: syntax.Node) -> syntax.T_Subsitution:

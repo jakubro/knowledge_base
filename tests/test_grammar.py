@@ -1,4 +1,3 @@
-import pyparsing as pp
 import pytest
 
 import knowledge_base.syntax as syntax
@@ -12,10 +11,6 @@ from knowledge_base.grammar import parse
     # Constants and Variables
     ('P', {'Constant': {'Value': 'P'}}),
     ('x', {'Variable': {'Value': 'x'}}),
-
-    # Functions and Predicates of 0-arity are Constants and Variables
-    ('H()', {'Constant': {'Value': 'H'}}),
-    ('f()', {'Variable': {'Value': 'f'}}),
 
     # Functions and Predicates of arity >= 1
     ('H(x, y, P, Q)', {
@@ -52,6 +47,19 @@ from knowledge_base.grammar import parse
                          }]
         }
     }),
+
+    # Functions and Predicates must be of arity >= 1
+    ('H()', None),
+    ('f()', None),
+
+    # Only Constants, Variables and Functions can appear inside Functions and
+    # Predicates
+    ('H(f(x))', None),
+    ('H(x & y)', None),
+    ('H(*x: foo)', None),
+    ('f(f(x))', None),
+    ('f(x & y)', None),
+    ('f(*x: foo)', None),
 
     # Boolean operators
     # -------------------------------------------------------------------------
@@ -101,7 +109,8 @@ from knowledge_base.grammar import parse
                                      'Formula': {
                                          'Value': 'Not',
                                          'Children': [
-                                             {'Constant': {'Value': 'P'}}]
+                                             {'Constant': {'Value': 'P'}}
+                                         ]
                                      }
                                  }]
                 }
@@ -184,6 +193,7 @@ from knowledge_base.grammar import parse
     # Equality
     # -------------------------------------------------------------------------
 
+    # Equals
     ('a = b', {
         'Function': {
             'Value': 'Equality',
@@ -201,6 +211,7 @@ from knowledge_base.grammar import parse
         }
     }),
 
+    # Not equals
     ('a != b', {
         'Formula': {
             'Value': 'Not',
@@ -231,6 +242,7 @@ from knowledge_base.grammar import parse
     # Quantifiers
     # -------------------------------------------------------------------------
 
+    # Universal
     ('*x: x', {
         'Formula': {
             'Value': {
@@ -242,6 +254,8 @@ from knowledge_base.grammar import parse
             'Children': [{'Variable': {'Value': 'x'}}]
         }
     }),
+
+    # Existential
     ('?x: x', {
         'Formula': {
             'Value': {
@@ -253,6 +267,8 @@ from knowledge_base.grammar import parse
             'Children': [{'Variable': {'Value': 'x'}}]
         }
     }),
+
+    # Nesting
     ('*x, ?y, ?z: x', {
         'Formula': {
             'Value': {
@@ -292,15 +308,17 @@ def test_parse(p, q):
 
     try:
         p = parse(p)
-    except pp.ParseException as e:
+    except ValueError as e:
         if q is not None:
             raise e
+        else:
+            p = None
 
     try:
         assert p == q
     except AssertionError as e:
         print("Actual:")
-        print(p.dumps())
+        print(p and p.dumps())
         print("Expected:")
-        print(q.dumps())
+        print(q and q.dumps())
         raise e
