@@ -37,6 +37,124 @@ import pyparsing as pp
 import knowledge_base.syntax as syntax
 
 
+def parse(s: str) -> syntax.Node:
+    """Parses First-Order Logic expression into `Node`.
+
+    :param s: The expression to parse.
+    :returns: Syntax tree representing the parsed expression.
+    :raises ValueError: If the expression does not have proper syntax.
+    """
+
+    grammar = build_grammar()
+    try:
+        tokens = grammar.parseString(s, parseAll=True)
+    except pp.ParseException as e:
+        raise ValueError(str(e)) from e
+    else:
+        assert len(tokens) == 1
+        rv: syntax.Node = tokens[0]
+        return rv.normalize()
+
+
+# noinspection PyPep8Naming
+def build_grammar() -> pp.ParserElement:
+    # Define each used element as `Forward`. This makes working with the
+    # grammar a lot easier.
+
+    Keyword = pp.Forward()
+    ConstantSymbol = pp.Forward()
+    VariableSymbol = pp.Forward()
+    Constant = pp.Forward()
+    Variable = pp.Forward()
+    Function = pp.Forward()
+    Predicate = pp.Forward()
+    Term = pp.Forward()
+    AtomicFormula = pp.Forward()
+    ComplexFormula = pp.Forward()
+    Formula = pp.Forward()
+    QuantifiedFormula = pp.Forward()
+    QuantifiedVariable = pp.Forward()
+
+    # Keywords
+    # -----------------------------
+
+    # Unary operators
+    NOT = named(pp.Literal('!'), syntax.NEGATION)
+
+    # Binary operators
+    AND = named(pp.Literal('&'), syntax.CONJUNCTION)
+    OR = named(pp.Literal('|'), syntax.DISJUNCTION)
+    IMPLIES = named(pp.Literal('=>'), syntax.IMPLICATION)
+    EQUALS = named(pp.Literal('<=>'), syntax.EQUIVALENCE)
+
+    # Equality
+    VALUE_EQUAL = named(pp.Literal('='), syntax.EQUALITY)
+    VALUE_NOT_EQUAL = pp.Literal('!=')  # is parsed to NOT(VALUE_EQUAL)
+
+    # Quantifiers
+    FOR_ALL = named(pp.Literal('*'), syntax.UNIVERSAL_QUANTIFIER)
+    EXISTS = named(pp.Literal('?'), syntax.EXISTENTIAL_QUANTIFIER)
+
+    # Grammar Rules
+    # -----------------------------
+
+    Keyword << (NOT | AND | OR | IMPLIES | EQUALS |
+                VALUE_EQUAL | VALUE_NOT_EQUAL |
+                FOR_ALL | EXISTS)
+
+    # Constants and Functions
+
+    ConstantSymbol << (~Keyword + ~pp.Literal('_') +
+                       pp.Word(pp.alphanums.upper(), pp.alphanums + '_'))
+
+    VariableSymbol << (~Keyword + ~pp.Literal('_') +
+                       pp.Word(pp.alphas.lower(), pp.alphanums + '_'))
+
+    Constant << ConstantSymbol
+    Constant.addParseAction(make_node(syntax.CONSTANT))
+
+    Variable << VariableSymbol
+    Variable.addParseAction(make_node(syntax.VARIABLE))
+
+    Function << (ConstantSymbol + make_list(Term))
+    Function.addParseAction(make_node(syntax.FUNCTION))
+
+    Predicate << (VariableSymbol + make_list(Term))
+    Predicate.addParseAction(make_node(syntax.PREDICATE))
+
+    # Formulas
+
+    Term << (Constant ^ Variable ^ Function)
+
+    Formula << (AtomicFormula ^ ComplexFormula ^ QuantifiedFormula)
+
+    AtomicFormula << (Predicate ^ pp.infixNotation(Term, [
+        (VALUE_EQUAL, 2, pp.opAssoc.LEFT, binary_operator(syntax.FUNCTION)),
+        (VALUE_NOT_EQUAL, 2, pp.opAssoc.LEFT,
+         negate_binary_operator(syntax.FUNCTION, VALUE_EQUAL)),
+    ]))
+
+    ComplexFormula << pp.infixNotation(AtomicFormula ^ QuantifiedFormula, [
+        (NOT, 1, pp.opAssoc.RIGHT, unary_operator(syntax.FORMULA)),
+        (AND, 2, pp.opAssoc.LEFT, binary_operator(syntax.FORMULA)),
+        (OR, 2, pp.opAssoc.LEFT, binary_operator(syntax.FORMULA)),
+        (EQUALS, 2, pp.opAssoc.LEFT, binary_operator(syntax.FORMULA)),
+        (IMPLIES, 2, pp.opAssoc.LEFT, binary_operator(syntax.FORMULA)),
+    ])
+
+    # Quantified formulas
+
+    QuantifiedFormula << (pp.Group(pp.delimitedList(QuantifiedVariable)) +
+                          pp.Suppress(':') +
+                          Formula)
+    QuantifiedFormula.addParseAction(nest_quantified_formulas(syntax.FORMULA))
+
+    QuantifiedVariable << ((FOR_ALL ^ EXISTS) + Variable)
+    QuantifiedVariable.addParseAction(make_node(syntax.QUANTIFIER))
+
+    return Formula
+
+
 # Helpers
 # -----------------------------------------------------------------------------
 
@@ -135,122 +253,3 @@ def nest_quantified_formulas(type_: str):
         return inner
 
     return parse_action
-
-
-# Grammar
-# -----------------------------------------------------------------------------
-
-# Define each used element as `Forward`. This simplifies a lot working with the
-# grammar.
-
-Keyword = pp.Forward()
-ConstantSymbol = pp.Forward()
-VariableSymbol = pp.Forward()
-Constant = pp.Forward()
-Variable = pp.Forward()
-Function = pp.Forward()
-Predicate = pp.Forward()
-Term = pp.Forward()
-AtomicFormula = pp.Forward()
-ComplexFormula = pp.Forward()
-Formula = pp.Forward()
-QuantifiedFormula = pp.Forward()
-QuantifiedVariable = pp.Forward()
-
-# Keywords
-# -----------------------------
-
-# Unary operators
-NOT = named(pp.Literal('!'), syntax.NEGATION)
-
-# Binary operators
-AND = named(pp.Literal('&'), syntax.CONJUNCTION)
-OR = named(pp.Literal('|'), syntax.DISJUNCTION)
-IMPLIES = named(pp.Literal('=>'), syntax.IMPLICATION)
-EQUALS = named(pp.Literal('<=>'), syntax.EQUIVALENCE)
-
-# Equality
-VALUE_EQUAL = named(pp.Literal('='), syntax.EQUALITY)
-VALUE_NOT_EQUAL = pp.Literal('!=')  # is parsed to NOT(VALUE_EQUAL)
-
-# Quantifiers
-FOR_ALL = named(pp.Literal('*'), syntax.UNIVERSAL_QUANTIFIER)
-EXISTS = named(pp.Literal('?'), syntax.EXISTENTIAL_QUANTIFIER)
-
-# Grammar Rules
-# -----------------------------
-
-Keyword << (NOT | AND | OR | IMPLIES | EQUALS |
-            VALUE_EQUAL | VALUE_NOT_EQUAL |
-            FOR_ALL | EXISTS)
-
-# Constants and Functions
-
-ConstantSymbol << (~Keyword + ~pp.Literal('_') +
-                   pp.Word(pp.alphanums.upper(), pp.alphanums + '_'))
-
-VariableSymbol << (~Keyword + ~pp.Literal('_') +
-                   pp.Word(pp.alphas.lower(), pp.alphanums + '_'))
-
-Constant << ConstantSymbol
-Constant.addParseAction(make_node(syntax.CONSTANT))
-
-Variable << VariableSymbol
-Variable.addParseAction(make_node(syntax.VARIABLE))
-
-Function << (ConstantSymbol + make_list(Term))
-Function.addParseAction(make_node(syntax.FUNCTION))
-
-Predicate << (VariableSymbol + make_list(Term))
-Predicate.addParseAction(make_node(syntax.PREDICATE))
-
-# Formulas
-
-Term << (Constant ^ Variable ^ Function)
-
-Formula << (AtomicFormula ^ ComplexFormula ^ QuantifiedFormula)
-
-AtomicFormula << (Predicate ^ pp.infixNotation(Term, [
-    (VALUE_EQUAL, 2, pp.opAssoc.LEFT, binary_operator(syntax.FUNCTION)),
-    (VALUE_NOT_EQUAL, 2, pp.opAssoc.LEFT,
-     negate_binary_operator(syntax.FUNCTION, VALUE_EQUAL)),
-]))
-
-ComplexFormula << pp.infixNotation(AtomicFormula ^ QuantifiedFormula, [
-    (NOT, 1, pp.opAssoc.RIGHT, unary_operator(syntax.FORMULA)),
-    (AND, 2, pp.opAssoc.LEFT, binary_operator(syntax.FORMULA)),
-    (OR, 2, pp.opAssoc.LEFT, binary_operator(syntax.FORMULA)),
-    (EQUALS, 2, pp.opAssoc.LEFT, binary_operator(syntax.FORMULA)),
-    (IMPLIES, 2, pp.opAssoc.LEFT, binary_operator(syntax.FORMULA)),
-])
-
-# Quantified formulas
-
-QuantifiedFormula << (pp.Group(pp.delimitedList(QuantifiedVariable)) +
-                      pp.Suppress(':') +
-                      Formula)
-QuantifiedFormula.addParseAction(nest_quantified_formulas(syntax.FORMULA))
-
-QuantifiedVariable << ((FOR_ALL ^ EXISTS) + Variable)
-QuantifiedVariable.addParseAction(make_node(syntax.QUANTIFIER))
-
-
-# Parsing
-# -----------------------------------------------------------------------------
-
-def parse(s: str) -> syntax.Node:
-    """Parses First-Order Logic expression into `Node`.
-
-    :param s: The expression to parse.
-    :returns: Syntax tree representing the parsed expression.
-    :raises ValueError: If the expression does not have proper syntax.
-    """
-
-    try:
-        tokens = Formula.parseString(s, parseAll=True)
-    except pp.ParseException as e:
-        raise ValueError(str(e)) from e
-    else:
-        assert len(tokens) == 1
-        rv: syntax.Node = tokens[0]
-        return rv.normalize()

@@ -327,13 +327,23 @@ class Node(NamedTuple):
                 or self.is_equivalence()
                 or self.is_equality())
 
+    def _sort_key(self):
+        rv = [self.type_]
+        if isinstance(self.value, str):
+            rv.append(self.value)
+        else:
+            rv.extend(self.value._sort_key())
+        rv.extend((k._sort_key() for k in self.children))
+        return tuple(rv)
+
     def _sort(self) -> 'Node':
         """Sorts nodes lexicographically by symbol names."""
 
         children = [k._sort() for k in self.children]
 
         if self._is_sortable():
-            children = list(sorted(children))
+
+            children = list(sorted(children, key=lambda s: s._sort_key()))
 
         return Node(type_=self.type_,
                     value=self.value,
@@ -459,7 +469,8 @@ class Node(NamedTuple):
         try:
             return ops.index(self.value) < ops.index(child.value)
         except ValueError:
-            return not (child.is_constant()
+            return not ((self.is_quantified() and child.is_quantified())
+                        or child.is_constant()
                         or child.is_variable()
                         or child.is_function()
                         or child.is_predicate())
@@ -527,6 +538,24 @@ class WalkState(NamedTuple):
 # Builders
 # -----------------------------------------------------------------------------
 
+def make_constant(name: str) -> Node:
+    return Node(type_=CONSTANT,
+                value=name,
+                children=[])
+
+
+def make_variable(name: str) -> Node:
+    return Node(type_=VARIABLE,
+                value=name,
+                children=[])
+
+
+def make_function(value: str, *args: str) -> Node:
+    return Node(type_=FUNCTION,
+                value=value,
+                children=[make_variable(a) for a in args])
+
+
 def make_formula(value: T_Value, children: T_Children) -> Node:
     return Node(type_=FORMULA,
                 value=value,
@@ -537,18 +566,6 @@ def make_quantifier(value: T_Value, name: str) -> Node:
     return Node(type_=QUANTIFIER,
                 value=value,
                 children=[make_variable(name)])
-
-
-def make_function(value: str, *args: str) -> Node:
-    return Node(type_=FUNCTION,
-                value=value,
-                children=[make_variable(a) for a in args])
-
-
-def make_variable(name: str) -> Node:
-    return Node(type_=VARIABLE,
-                value=name,
-                children=[])
 
 
 # Serialization

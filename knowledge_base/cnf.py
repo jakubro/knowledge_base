@@ -138,19 +138,21 @@ def _standardize_variables(node: syntax.Node,
 
     """
 
-    seen: List[int] = state.context.setdefault('seen', [])
+    seen: List[syntax.Node] = state.context.setdefault('seen', [])
 
-    if id(node) in seen:
+    if node in seen:
         return node
 
-    elif node.is_quantified():
+    if node.is_quantified():
         old = node.get_quantified_variable().value
+        if old.startswith('_'):
+            return node  # already renamed
         new = _new_variable_name(state)
         state.stack.append((old, new))
         qtype = node.get_quantifier_type()
         quant = syntax.make_quantifier(qtype, new)
         rv = syntax.make_formula(quant, node.children)
-        seen.append(id(rv))
+        seen.append(rv)
         return rv
 
     elif node.is_variable():
@@ -159,7 +161,7 @@ def _standardize_variables(node: syntax.Node,
         for old, new in reversed(state.stack):
             if old == node.value:
                 rv = syntax.make_variable(new)
-                seen.append(id(rv))
+                seen.append(rv)
                 return rv
 
         return node
@@ -227,7 +229,7 @@ def _skolemize(node: syntax.Node, state: syntax.WalkState) -> syntax.Node:
                     return rv
                 else:
                     # replace with a Skolem constant
-                    return syntax.make_variable(new)
+                    return syntax.make_constant(new)
         return node
 
     else:
