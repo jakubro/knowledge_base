@@ -5,14 +5,24 @@ from knowledge_base.grammar import parse
 
 @pytest.mark.parametrize('p, q', [
     # bracketing
-    ('a', '(a)'),
-    ('a & b', 'a & (b)'),
-    ('a & b & c', 'a & (b & c)'),
-    ('a & b & c', '(a & b) & c'),
-    ('a | (b & c)', 'a | (b & c)'),
+    ('x', '(x)'),
+    ('x & y', 'x & (y)'),
+    ('x | y', 'x | (y)'),
+    ('x => y', 'x => (y)'),
+    ('x <=> y', 'x <=> (y)'),
+    ('(x & y) & z', 'x & (y & z)'),
+    ('(x | y) | z', 'x | (y | z)'),
+    ('(x => y) => z', 'x => (y => z)'),
+    ('(x <=> y) <=> z', 'x <=> (y <=> z)'),
+    ('x & y | z', '(x & y) | z'),
 
     # order
     ('x & y & z', 'z & y & x'),
+    ('x & !y & !z', '!z & !y & x'),
+    ('x | y | z', 'z | y | x'),
+    ('x | !y | !z', '!z | !y | x'),
+    ('x <=> y <=> z', 'z <=> y <=> x'),
+    ('x <=> !y <=> !z', '!z <=> !y <=> x'),
 ])
 def test_equivalent_expressions(p, q):
     assert parse(p) == parse(q)
@@ -20,10 +30,12 @@ def test_equivalent_expressions(p, q):
 
 @pytest.mark.parametrize('p, q', [
     # bracketing
-    ('a & b | c', 'a & (b | c)'),
+    ('x & y | z', 'x & (y | z)'),
 
     # order
-    ('a => b', 'b => a'),
+    ('x => y', 'y => x'),
+    ('H(x, y)', 'H(y, x)'),
+    ('f(x, y)', 'f(y, x)'),
 ])
 def test_not_equivalent_expressions(p, q):
     assert parse(p) != parse(q)

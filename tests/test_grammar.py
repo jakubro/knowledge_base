@@ -300,6 +300,37 @@ from knowledge_base.grammar import parse
             }]
         }
     }),
+    ('*x: ?y: ?z: x', {
+        'Formula': {
+            'Value': {
+                'Quantifier': {
+                    'Value': 'ForAll',
+                    'Children': [{'Variable': {'Value': 'x'}}]
+                }
+            },
+            'Children': [{
+                'Formula': {
+                    'Value': {
+                        'Quantifier': {
+                            'Value': 'Exists',
+                            'Children': [{'Variable': {'Value': 'y'}}]
+                        }
+                    },
+                    'Children': [{
+                        'Formula': {
+                            'Value': {
+                                'Quantifier': {
+                                    'Value': 'Exists',
+                                    'Children': [{'Variable': {'Value': 'z'}}]
+                                }
+                            },
+                            'Children': [{'Variable': {'Value': 'x'}}]
+                        }
+                    }]
+                }
+            }]
+        }
+    }),
 
 ])
 def test_parse(p, q):

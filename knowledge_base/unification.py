@@ -1,8 +1,8 @@
 import knowledge_base.syntax as syntax
 
 
-def unify(p: syntax.Node, q: syntax.Node) -> syntax.T_Subsitution:
-    """Unifies two sentences via Robinson's unification algorithm"""
+def unify(p: syntax.Node, q: syntax.Node) -> syntax.T_Substitution:
+    """Unifies two sentences via Robinson's unification algorithm."""
 
     if p.is_constant() and q.is_constant():
         if p.value != q.value:
@@ -36,8 +36,10 @@ def unify(p: syntax.Node, q: syntax.Node) -> syntax.T_Subsitution:
             return rv
 
 
-def compose_substitutions(r: syntax.T_Subsitution,
-                          s: syntax.T_Subsitution) -> syntax.T_Subsitution:
+def compose_substitutions(r: syntax.T_Substitution,
+                          s: syntax.T_Substitution) -> syntax.T_Substitution:
+    """Composes two substitutions."""
+
     s1 = {k: v for k, v in s.items() if k not in r}
     r1 = {}
     for k, v in r.items():

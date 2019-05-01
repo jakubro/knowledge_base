@@ -83,7 +83,6 @@ def unary_operator(type_: str):
     def parse_action(tokens):
         assert len(tokens) == 1
         tokens = tokens[0]
-        assert len(tokens) == 2
         return syntax.Node(type_=type_,
                            value=tokens[0],
                            children=tokens[1:])
@@ -141,6 +140,10 @@ def nest_quantified_formulas(type_: str):
 # Grammar
 # -----------------------------------------------------------------------------
 
+# Define each used element as `Forward`. This simplifies a lot working with the
+# grammar.
+
+Keyword = pp.Forward()
 ConstantSymbol = pp.Forward()
 VariableSymbol = pp.Forward()
 Constant = pp.Forward()
@@ -158,48 +161,52 @@ QuantifiedVariable = pp.Forward()
 # -----------------------------
 
 # Unary operators
-NOT = named(pp.CaselessKeyword('Not') ^ pp.Literal('!'),
-            syntax.NEGATION)
+NOT = named(pp.Literal('!'), syntax.NEGATION)
 
 # Binary operators
-AND = named(pp.CaselessKeyword('And') ^ pp.Literal('&'),
-            syntax.CONJUNCTION)
-OR = named(pp.CaselessKeyword('Or') ^ pp.Literal('|'),
-           syntax.DISJUNCTION)
-IMPLIES = named(pp.CaselessKeyword('Implies') ^ pp.Literal('=>'),
-                syntax.IMPLICATION)
-EQUALS = named(pp.CaselessKeyword('Equals') ^ pp.Literal('<=>'),
-               syntax.EQUIVALENCE)
+AND = named(pp.Literal('&'), syntax.CONJUNCTION)
+OR = named(pp.Literal('|'), syntax.DISJUNCTION)
+IMPLIES = named(pp.Literal('=>'), syntax.IMPLICATION)
+EQUALS = named(pp.Literal('<=>'), syntax.EQUIVALENCE)
 
 # Equality
-VALUE_EQUAL = named(pp.Literal('='),
-                    syntax.EQUALITY)
-VALUE_NOT_EQUAL = pp.Literal('!=')
+VALUE_EQUAL = named(pp.Literal('='), syntax.EQUALITY)
+VALUE_NOT_EQUAL = pp.Literal('!=')  # is parsed to NOT(VALUE_EQUAL)
 
 # Quantifiers
-FOR_ALL = named(pp.CaselessKeyword('ForAll') ^ pp.Literal('*'),
-                syntax.UNIVERSAL_QUANTIFIER)
-EXISTS = named(pp.CaselessKeyword('Exists') ^ pp.Literal('?'),
-               syntax.EXISTENTIAL_QUANTIFIER)
+FOR_ALL = named(pp.Literal('*'), syntax.UNIVERSAL_QUANTIFIER)
+EXISTS = named(pp.Literal('?'), syntax.EXISTENTIAL_QUANTIFIER)
 
-# Grammar
+# Grammar Rules
 # -----------------------------
 
-Keyword = (NOT | AND | OR | IMPLIES | EQUALS |
-           VALUE_EQUAL | VALUE_NOT_EQUAL |
-           FOR_ALL | EXISTS)
+Keyword << (NOT | AND | OR | IMPLIES | EQUALS |
+            VALUE_EQUAL | VALUE_NOT_EQUAL |
+            FOR_ALL | EXISTS)
+
+# Constants and Functions
 
 ConstantSymbol << (~Keyword + ~pp.Literal('_') +
                    pp.Word(pp.alphanums.upper(), pp.alphanums + '_'))
 
-Constant << ConstantSymbol
-Constant.addParseAction(make_node(syntax.CONSTANT))
-
 VariableSymbol << (~Keyword + ~pp.Literal('_') +
                    pp.Word(pp.alphas.lower(), pp.alphanums + '_'))
 
+Constant << ConstantSymbol
+Constant.addParseAction(make_node(syntax.CONSTANT))
+
 Variable << VariableSymbol
 Variable.addParseAction(make_node(syntax.VARIABLE))
+
+Function << (ConstantSymbol + make_list(Term))
+Function.addParseAction(make_node(syntax.FUNCTION))
+
+Predicate << (VariableSymbol + make_list(Term))
+Predicate.addParseAction(make_node(syntax.PREDICATE))
+
+# Formulas
+
+Term << (Constant ^ Variable ^ Function)
 
 Formula << (AtomicFormula ^ ComplexFormula ^ QuantifiedFormula)
 
@@ -217,6 +224,8 @@ ComplexFormula << pp.infixNotation(AtomicFormula ^ QuantifiedFormula, [
     (IMPLIES, 2, pp.opAssoc.LEFT, binary_operator(syntax.FORMULA)),
 ])
 
+# Quantified formulas
+
 QuantifiedFormula << (pp.Group(pp.delimitedList(QuantifiedVariable)) +
                       pp.Suppress(':') +
                       Formula)
@@ -224,14 +233,6 @@ QuantifiedFormula.addParseAction(nest_quantified_formulas(syntax.FORMULA))
 
 QuantifiedVariable << ((FOR_ALL ^ EXISTS) + Variable)
 QuantifiedVariable.addParseAction(make_node(syntax.QUANTIFIER))
-
-Term << (Constant ^ Variable ^ Function)
-
-Function << (ConstantSymbol + make_list(Term))
-Function.addParseAction(make_node(syntax.FUNCTION))
-
-Predicate << (VariableSymbol + make_list(Term))
-Predicate.addParseAction(make_node(syntax.PREDICATE))
 
 
 # Parsing

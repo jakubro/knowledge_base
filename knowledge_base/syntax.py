@@ -46,7 +46,7 @@ EXISTENTIAL_QUANTIFIER = 'Exists'
 
 T_Value = Union[str, 'Node']
 T_Children = List['Node']
-T_Subsitution = Dict[str, 'Node']  # replaces term (value) with variable (key)
+T_Substitution = Dict[str, 'Node']  # replaces term (value) with variable (key)
 
 
 class Node(NamedTuple):
@@ -73,6 +73,8 @@ class Node(NamedTuple):
     # -------------------------------------------------------------------------
 
     def is_formula(self) -> bool:
+        """:returns: Whether the node is a formula."""
+
         return self.type_ == FORMULA
 
     # Atomic Expressions
@@ -86,25 +88,37 @@ class Node(NamedTuple):
                 or (self.is_negation() and self.children[0]._is_atomic()))
 
     def is_constant(self) -> bool:
+        """:returns: Whether the node is a constant."""
+
         return self.type_ == CONSTANT
 
     def is_variable(self) -> bool:
+        """:returns: Whether the node is a variable."""
+
         return self.type_ == VARIABLE
 
     def is_function(self) -> bool:
+        """:returns: Whether the node is a function."""
+
         return self.type_ == FUNCTION
 
+    def is_predicate(self) -> bool:
+        """:returns: Whether the node is a predicate."""
+
+        return self.type_ == PREDICATE
+
     def is_equality(self) -> bool:
+        """:returns: Whether the node is an equality."""
+
         return (self.is_function()
                 and self.value == EQUALITY)
-
-    def is_predicate(self) -> bool:
-        return self.type_ == PREDICATE
 
     # Complex Expressions
     # -------------------------------------------------------------------------
 
     def negate(self) -> 'Node':
+        """Negates the expression."""
+
         if self.is_negation():
             children = self.children
             assert len(children) == 1
@@ -113,22 +127,32 @@ class Node(NamedTuple):
             return Node(type_=FORMULA, value=NEGATION, children=[self])
 
     def is_negation(self) -> bool:
+        """:returns: Whether the node is negated."""
+
         return (self.is_formula()
                 and self.value == NEGATION)
 
     def is_conjunction(self) -> bool:
+        """:returns: Whether the node is a conjunction."""
+
         return (self.is_formula()
                 and self.value == CONJUNCTION)
 
     def is_disjunction(self) -> bool:
+        """:returns: Whether the node is a disjunction."""
+
         return (self.is_formula()
                 and self.value == DISJUNCTION)
 
     def is_implication(self) -> bool:
+        """:returns: Whether the node is an implication."""
+
         return (self.is_formula()
                 and self.value == IMPLICATION)
 
     def is_equivalence(self) -> bool:
+        """:returns: Whether the node is an equivalence."""
+
         return (self.is_formula()
                 and self.value == EQUIVALENCE)
 
@@ -136,15 +160,26 @@ class Node(NamedTuple):
     # -------------------------------------------------------------------------
 
     def is_quantified(self) -> bool:
+        """:returns: Whether the node is a quantified formula."""
+
         value = self.value
         return (self.is_formula()
                 and isinstance(value, Node)
                 and value.is_quantifier())
 
     def is_quantifier(self) -> bool:
+        """:returns: Whether the node is a quantifier."""
+
         return self.type_ == QUANTIFIER
 
     def get_quantifier_type(self) -> str:
+        """
+        :returns: Type of the quantifier. Either `UNIVERSAL_QUANTIFIER` or
+        `EXISTENTIAL_QUANTIFIER`.
+        :raises TypeError: If the node is not a quantified formula, neither
+        quantifier.
+        """
+
         if self.is_quantified():
             return self.value.get_quantifier_type()
         elif self.is_quantifier():
@@ -153,6 +188,12 @@ class Node(NamedTuple):
             raise TypeError()
 
     def get_quantified_variable(self) -> 'Node':
+        """
+        :returns: Node with quantified variable.
+        :raises TypeError: If the node is not a quantified formula, neither
+        quantifier.
+        """
+
         if self.is_quantified():
             return self.value.get_quantified_variable()
         elif self.is_quantifier():
@@ -160,16 +201,16 @@ class Node(NamedTuple):
         else:
             raise TypeError()
 
-    def is_universally_quantified(self) -> bool:
-        return self.get_quantifier_type() == UNIVERSAL_QUANTIFIER
-
-    def is_existentially_quantified(self) -> bool:
-        return self.get_quantifier_type() == EXISTENTIAL_QUANTIFIER
-
     # Substitutions
     # -------------------------------------------------------------------------
 
     def occurs_in(self, node: 'Node') -> bool:
+        """
+        :returns: Whether the provided node occurs as a function argument
+        inside this node.
+        :raises TypeError: If the provided node is not a variable.
+        """
+
         if not self.is_variable():
             raise TypeError()
         if node.is_function():
@@ -180,22 +221,30 @@ class Node(NamedTuple):
         else:
             return False
 
-    def apply(self, subsitutions: T_Subsitution) -> 'Node':
+    def apply(self, substitutions: T_Substitution) -> 'Node':
+        """Applies substitutions to the node.
+
+        :param substitutions: Substitutions to apply.
+        :returns: Transformed node.
+        """
+
         if self.is_variable():
-            for k, v in subsitutions.items():
+            for k, v in substitutions.items():
                 if k == self.value:
                     return v
             return self
         else:
             return Node(type_=self.type_,
                         value=self.value,
-                        children=[c.apply(subsitutions)
+                        children=[c.apply(substitutions)
                                   for c in self.children])
 
     # CNF
     # -------------------------------------------------------------------------
 
     def is_cnf(self) -> bool:
+        """:returns: Whether the node is in CNF."""
+
         return (self._is_cnf_conjunction()
                 or self._is_cnf_disjunction()
                 or self._is_atomic())
@@ -211,6 +260,8 @@ class Node(NamedTuple):
                         for x in self.children))
 
     def as_disjunction_clauses(self) -> Iterator['Node']:
+        """:returns: Iterator with disjunction clauses."""
+
         assert self.is_cnf()
         if self.is_conjunction():
             for k in self.children:
@@ -222,12 +273,16 @@ class Node(NamedTuple):
     # -------------------------------------------------------------------------
 
     def normalize(self) -> 'Node':
+        """Produces normalized expression. (Useful for comparing nodes.)"""
+
         rv = self
         rv = rv._unfold()
         rv = rv._sort()
         return rv
 
     def denormalize(self) -> 'Node':
+        """Unfolds the expression. (Useful for traversing the syntax tree.)"""
+
         rv = self
         rv = rv._fold()
         return rv
@@ -297,6 +352,15 @@ class Node(NamedTuple):
               compact: bool = False,
               format_: str = 'yaml',
               **kwargs) -> str:
+        """Serializes node.
+
+        :param compact: Whether to produce more compact form.
+        :param format_: Format to use. Either `yaml` or `json`.
+        :param kwargs: Additional keyword arguments are passed to YAML or JSON
+        serializer.
+        :returns: Serialized node.
+        """
+
         rv = _dump(self, compact)
         if format_ == 'yaml':
             return yaml.dump(rv, **kwargs, Dumper=_YamlDumper)
@@ -306,7 +370,13 @@ class Node(NamedTuple):
             raise ValueError('format_')
 
     @classmethod
-    def loads(cls, value):
+    def loads(cls, value) -> 'Node':
+        """Deserializes node.
+
+        :param value: Serialized node. (Must not be in a compact form.)
+        :returns: Deserialized node.
+        """
+
         try:
             # loads JSON as well, since JSON is a subset of YAML
             value = yaml.load(value)
@@ -366,10 +436,11 @@ class Node(NamedTuple):
     def _quantifier_str(self) -> str:
         """Quantifier string."""
 
-        if self.is_universally_quantified():
+        qtype = self.get_quantifier_type()
+        if qtype == UNIVERSAL_QUANTIFIER:
             return '*'
         else:
-            assert self.is_existentially_quantified()
+            assert qtype == EXISTENTIAL_QUANTIFIER
             return '?'
 
     def _enclose(self, child) -> str:
@@ -398,8 +469,8 @@ class Node(NamedTuple):
 # -----------------------------------------------------------------------------
 
 def walk(node: T,
-         state: 'WalkState',
-         func: Callable[[Node, 'WalkState'], Node]) -> T:
+         func: Callable[[Node, 'WalkState'], Node],
+         state: 'WalkState' = None) -> T:
     """Invokes `func` on each node and then recurses into node's value and
     children.
 
@@ -410,12 +481,15 @@ def walk(node: T,
     :returns: Traversed node.
     """
 
+    if state is None:
+        state = WalkState.make()
+
     if isinstance(node, Node):
         while True:
             prev = node
             node = func(node, state)
-            value = walk(node.value, state, func)
-            children = walk(node.children, state, func)
+            value = walk(node.value, func, state)
+            children = walk(node.children, func, state)
             node = Node(type_=node.type_, value=value, children=children)
             if node == prev:
                 return prev
@@ -424,7 +498,7 @@ def walk(node: T,
         rv = []
         for child in node:
             ctx = state.copy()
-            child = walk(child, ctx, func)
+            child = walk(child, func, ctx)
             rv.append(child)
         return rv
 

@@ -4,7 +4,9 @@ An inference engine for First-Order Logic.
 
 Notes:
 
-* The grammar is in `grammar.py`.
+* The grammar is in `grammar.py` and data structures for representing the syntaxt tree is in `syntax.py`. `cnf.py` 
+contains code for converting syntax tree into CNF and `unification.py` contains implementation of the Robinson's 
+unification algorithm.
 
 Example grammar of first-order Peano arithmetic:
 

@@ -21,8 +21,7 @@ def convert_to_cnf(node: syntax.Node) -> syntax.Node:
               _standardize_variables,
               _skolemize,
               _distribute_conjunction]:
-        state = syntax.WalkState.make()
-        node = syntax.walk(node, state, f)
+        node = syntax.walk(node, f)
 
     node = node.normalize()
     assert node.is_cnf()
@@ -109,9 +108,9 @@ def _propagate_negation(node: syntax.Node, *args) -> syntax.Node:
 
     # Flip Quantifiers
     elif child.is_quantified():
-        qtype = (syntax.EXISTENTIAL_QUANTIFIER
-                 if child.is_universally_quantified()
-                 else syntax.UNIVERSAL_QUANTIFIER)
+        qtype = next(k for k in [syntax.UNIVERSAL_QUANTIFIER,
+                                 syntax.EXISTENTIAL_QUANTIFIER]
+                     if k != child.get_quantifier_type())
         qname = child.get_quantified_variable().value
         rv = syntax.make_quantifier(qtype, qname)
 
