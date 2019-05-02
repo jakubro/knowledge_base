@@ -17,6 +17,7 @@ from knowledge_base.grammar import parse
     ('P', 'H(x)', None),
 
     ('x', 'H(x)', None),
+    ('H(x)', 'x', None),
     ('x', 'H(y)', {'x': 'H(y)'}),
     ('x', 'H(P)', {'x': 'H(P)'}),
 

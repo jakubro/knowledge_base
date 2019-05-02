@@ -6,6 +6,7 @@ def unify(p: syntax.Node, q: syntax.Node) -> syntax.T_Substitution:
 
     if not p.is_term():
         raise TypeError()
+
     if not q.is_term():
         raise TypeError()
 
