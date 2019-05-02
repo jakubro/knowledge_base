@@ -111,6 +111,5 @@ def _parse_subsitution(subs):
 ])
 def test_serialization(p):
     f = parse(p)
-    dump = f.dumps()
-    g = syntax.Node.loads(dump)
-    assert f == g
+    assert f == syntax.Node.loads(f.dumps())
+    assert f == parse(str(f))

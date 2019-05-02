@@ -1,3 +1,4 @@
+import copy
 from typing import List, Tuple, Union
 
 import knowledge_base.syntax as syntax
@@ -171,10 +172,7 @@ def _standardize_variables(node: syntax.Node,
 
 
 def _skolemize(node: syntax.Node, state: syntax.WalkState) -> syntax.Node:
-    """Skolemizes sentences by replacing those enclosed only by existentially
-    qualified variables with unique constants (Skolem constants), and those
-    sentences enclosed by universally quantified variables with unique
-    functions (Skolem functions).
+    """Skolemizes sentences and drops quantifiers.
 
     :param node: The node to rewrite.
     :param state: Rewriting state.
@@ -184,32 +182,41 @@ def _skolemize(node: syntax.Node, state: syntax.WalkState) -> syntax.Node:
 
     Rewrites sentences of type:
 
-    - `*x: A(x)` into `A(Func_1(x))`,
-    - `?x: A(x)` into `A(CONST_1)`.
+    - `?x: x` into `C1`,
+    - `*a: a & ?x: x` into `a & F1(a)`,
+    - `*a: a & ?x: x & *b: b & ?y: y` into `a & F1(a) & b & F2(a, b)`,
 
     """
 
-    stack: List[Tuple[str, str, str]] = state.stack
-    seen: List[int] = state.context.setdefault('seen', [])
+    if not state.stack:
+        state.stack.extend([[], []])
 
-    if id(node) in seen:
-        return node
+    # enclosing universally quantified variables
+    universal: List[str] = state.stack[0]
+    replacements: List[Tuple[str, syntax.Node]] = state.stack[1]
 
-    elif node.is_quantified():
-        qv = node.get_quantified_variable()
-        old = qv.value
+    if node.is_quantified():
         qtype = node.get_quantifier_type()
-
-        quantifiers = [t for t, n, _ in stack]
-        for qt in (qtype, *quantifiers):
-            if qt == syntax.UNIVERSAL_QUANTIFIER:
-                new = _new_function_name(state)
-                break
+        if qtype == syntax.UNIVERSAL_QUANTIFIER:
+            qv = node.get_quantified_variable()
+            universal.append(qv.value)
         else:
-            new = _new_constant_name(state)
+            assert qtype == syntax.EXISTENTIAL_QUANTIFIER
 
-        seen.append(id(qv))
-        stack.append((qtype, old, new))
+            # store what to replace (actual replacement happens in the
+            # elif branch below)
+
+            qv = node.get_quantified_variable()
+            old = qv.value
+
+            if universal:
+                name = _new_function_name(state)
+                new = syntax.make_function(name, *universal)
+            else:
+                name = _new_constant_name(state)
+                new = syntax.make_constant(name)
+
+            replacements.append((old, new))
 
         # drop quantifiers
         children = node.children
@@ -217,19 +224,9 @@ def _skolemize(node: syntax.Node, state: syntax.WalkState) -> syntax.Node:
         return children[0]
 
     elif node.is_variable():
-        args = []  # enclosing universally quantified variables
-        for qtype, old, new in stack:
-            if qtype == syntax.UNIVERSAL_QUANTIFIER:
-                args.append(old)
+        for old, new in replacements:
             if old == node.value:
-                if args:
-                    # replace with a Skolem function
-                    rv = syntax.make_function(new, *args)
-                    seen.extend(id(r) for r in rv.children)
-                    return rv
-                else:
-                    # replace with a Skolem constant
-                    return syntax.make_constant(new)
+                return copy.deepcopy(new)
         return node
 
     else:

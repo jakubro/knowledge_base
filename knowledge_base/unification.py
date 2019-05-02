@@ -5,26 +5,26 @@ def unify(p: syntax.Node, q: syntax.Node) -> syntax.T_Substitution:
     """Unifies two sentences via Robinson's unification algorithm."""
 
     if not p.is_term():
-        raise TypeError()
+        raise TypeError("Node is not a term")
 
     if not q.is_term():
-        raise TypeError()
+        raise TypeError("Node is not a term")
 
     if p.is_constant() and q.is_constant():
         if p.value != q.value:
-            raise ValueError('Not unifiable')
+            raise ValueError("Not unifiable")
         else:
             return {}  # already unified
 
     elif p.is_variable():
         if p.occurs_in(q):
-            raise ValueError('Not unifiable')
+            raise ValueError("Not unifiable")
         else:
             return {p.value: q}
 
     elif q.is_variable():
         if q.occurs_in(p):
-            raise ValueError('Not unifiable')
+            raise ValueError("Not unifiable")
         else:
             return {q.value: p}
 
@@ -32,7 +32,7 @@ def unify(p: syntax.Node, q: syntax.Node) -> syntax.T_Substitution:
         if (p.type_ != q.type_
                 or p.value != q.value
                 or len(p.children) != len(q.children)):
-            raise ValueError('Not unifiable')
+            raise ValueError("Not unifiable")
         else:
             rv = {}
             for x, y in zip(p.children, q.children):

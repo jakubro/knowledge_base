@@ -190,7 +190,8 @@ class Node(NamedTuple):
         elif self.is_quantifier():
             return self.value
         else:
-            raise TypeError()
+            raise TypeError("Node is not a quantifier, "
+                            "neither a quantified formula")
 
     def get_quantified_variable(self) -> 'Node':
         """
@@ -204,7 +205,8 @@ class Node(NamedTuple):
         elif self.is_quantifier():
             return self.children[0]
         else:
-            raise TypeError()
+            raise TypeError("Node is not a quantifier, "
+                            "neither a quantified formula")
 
     # Substitutions
     # -------------------------------------------------------------------------
@@ -217,7 +219,8 @@ class Node(NamedTuple):
         """
 
         if not self.is_variable():
-            raise TypeError()
+            raise TypeError("Node is not a variable")
+
         if node.is_function() or node.is_predicate():
             for c in node.children:
                 if c.is_variable() and c.value == self.value:
@@ -270,6 +273,7 @@ class Node(NamedTuple):
             for k in self.children:
                 yield from k.as_disjunction_clauses()
         else:
+            assert self._is_atomic()
             yield self
 
     # Normalization
@@ -284,14 +288,44 @@ class Node(NamedTuple):
         return rv
 
     def denormalize(self) -> 'Node':
-        """Unfolds the expression. (Useful for traversing the syntax tree.)"""
+        """Folds the expression. (Useful for traversing the syntax tree.)"""
 
         rv = self
         rv = rv._fold()
         return rv
 
     def _unfold(self) -> 'Node':
-        """Flattens nodes of the same type into one node."""
+        """Flattens nodes of the same type into one node.
+
+        For example this node:
+
+        {
+            'Formula': {
+                'Value': 'And',
+                'Children': [
+                    {'Variable': {'Value': 'a'}},
+                    {
+                        'Formula': {
+                            'Value': 'And',
+                            'Children': [{'Variable': {'Value': 'b'}},
+                                         {'Variable': {'Value': 'c'}}]
+                        }
+                    }]
+            }
+        }
+
+        becomes:
+
+        {
+            'Formula': {
+                'Value': 'And',
+                'Children': [{'Variable': {'Value': 'a'}},
+                             {'Variable': {'Value': 'b'}},
+                             {'Variable': {'Value': 'c'}}]
+            }
+        }
+
+        """
 
         children = [k._unfold() for k in self.children]
 
@@ -309,6 +343,8 @@ class Node(NamedTuple):
                     children=children)
 
     def _fold(self) -> 'Node':
+        """Inverse of `_unfold`."""
+
         children = [k._fold() for k in self.children]
 
         if self._is_foldable():
@@ -330,7 +366,7 @@ class Node(NamedTuple):
                 or self.is_equivalence()
                 or self.is_equality())
 
-    def _sort_key(self):
+    def _sort_key(self) -> tuple:
         rv = [self.type_]
         if isinstance(self.value, str):
             rv.append(self.value)
@@ -340,13 +376,15 @@ class Node(NamedTuple):
         return tuple(rv)
 
     def _sort(self) -> 'Node':
-        """Sorts nodes lexicographically by symbol names."""
+        """Sorts nodes lexicographically in a stable way."""
 
         children = [k._sort() for k in self.children]
 
         if self._is_sortable():
-
-            children = list(sorted(children, key=lambda s: s._sort_key()))
+            # noinspection PyProtectedMember
+            # justification: s is a Node
+            key = lambda s: s._sort_key()
+            children = list(sorted(children, key=key))
 
         return Node(type_=self.type_,
                     value=self.value,
@@ -380,7 +418,7 @@ class Node(NamedTuple):
         elif format_ == 'json':
             return json.dumps(rv, **kwargs)
         else:
-            raise ValueError('format_')
+            raise ValueError("Provided 'format_' is not valid")
 
     @classmethod
     def loads(cls, value) -> 'Node':
@@ -392,7 +430,7 @@ class Node(NamedTuple):
 
         try:
             # loads JSON as well, since JSON is a subset of YAML
-            value = yaml.load(value)
+            value = yaml.load(value, Loader=yaml.SafeLoader)
         except AttributeError:
             pass
         rv = _load(value)
@@ -403,34 +441,37 @@ class Node(NamedTuple):
     # -------------------------------------------------------------------------
 
     def __str__(self):
-        if self.is_formula():
-            if self.is_quantified():
-                child = self.children[0]
-                return f'{self.value}: {self._enclose(child)}'
-            elif self.is_negation():
-                child = self.children[0]
-                return f'!{self._enclose(child)}'
-            else:
-                op = f' {self._operator_str()} '
-                return op.join(self._enclose(x) for x in self.children)
+        if self.is_constant() or self.is_variable():
+            return self.value
+
+        elif self.is_equality():
+            return self._infix_str(' = ')
+
+        elif self.is_function() or self.is_predicate():
+            body = self._infix_str(', ')
+            return f'{self.value}({body})'
+
+        elif self.is_negation():
+            child = self.children[0]
+            return f'!{self._enclose(child)}'
+
+        elif self.is_quantified():
+            child = self.children[0]
+            return f'{self.value}: {self._enclose(child)}'
 
         elif self.is_quantifier():
             child = self.children[0]
             return f'{self._quantifier_str()}{self._enclose(child)}'
 
-        elif self.is_constant() or self.is_variable():
-            return self.value
-
-        elif self.is_function() or self.is_predicate():
-            if self.is_equality():
-                return ' = '.join(self._enclose(x) for x in self.children)
-            else:
-                args = ', '.join((self._enclose(x) for x in self.children))
-                return f'{self.value}({args})'
-
-        raise ValueError()
+        else:
+            assert self.is_formula()
+            op = f' {self._operator_str()} '
+            return self._infix_str(op)
 
     __repr__ = __str__
+
+    def _infix_str(self, op: str) -> str:
+        return op.join(self._enclose(x) for x in self.children)
 
     def _operator_str(self) -> str:
         """Operator string."""
