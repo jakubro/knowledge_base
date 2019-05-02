@@ -77,6 +77,11 @@ class Node(NamedTuple):
 
         return self.type_ == FORMULA
 
+    def is_term(self) -> bool:
+        """:returns: Whether the node is a term."""
+
+        return self.is_constant() or self.is_variable() or self.is_function()
+
     # Atomic Expressions
     # -------------------------------------------------------------------------
 
@@ -213,13 +218,11 @@ class Node(NamedTuple):
 
         if not self.is_variable():
             raise TypeError()
-        if node.is_function():
-            return any((c.value == self.value
-                        if c.is_variable()
-                        else self.occurs_in(c))
-                       for c in node.children)
-        else:
-            return False
+        if node.is_function() or node.is_predicate():
+            for c in node.children:
+                if c.is_variable() and c.value == self.value:
+                    return True
+        return any(self.occurs_in(c) for c in node.children)
 
     def apply(self, substitutions: T_Substitution) -> 'Node':
         """Applies substitutions to the node.

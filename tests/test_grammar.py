@@ -331,7 +331,6 @@ from knowledge_base.grammar import parse
             }]
         }
     }),
-
 ])
 def test_parse(p, q):
     if q is not None:

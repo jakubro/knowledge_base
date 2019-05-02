@@ -4,6 +4,11 @@ import knowledge_base.syntax as syntax
 def unify(p: syntax.Node, q: syntax.Node) -> syntax.T_Substitution:
     """Unifies two sentences via Robinson's unification algorithm."""
 
+    if not p.is_term():
+        raise TypeError()
+    if not q.is_term():
+        raise TypeError()
+
     if p.is_constant() and q.is_constant():
         if p.value != q.value:
             raise ValueError('Not unifiable')
@@ -40,11 +45,23 @@ def compose_substitutions(r: syntax.T_Substitution,
                           s: syntax.T_Substitution) -> syntax.T_Substitution:
     """Composes two substitutions."""
 
-    s1 = {k: v for k, v in s.items() if k not in r}
     r1 = {}
-    for k, v in r.items():
-        v = v.apply(s)
-        if v.is_variable() and v.value == k:
+    for v, t in r.items():
+        assert t.is_term()
+        t = t.apply(s)
+        # exclude no-op substitutions, e.g. {'x': x} becomes {}
+        if t.is_variable() and t.value == v:
             continue
-        r1[k] = v
+        r1[v] = t
+
+    s1 = {}
+    for v, t in s.items():
+        assert t.is_term()
+        if v in r:
+            continue
+        # exclude no-op substitutions, e.g. {'x': x} becomes {}
+        if t.is_variable() and t.value == v:
+            continue
+        s1[v] = t
+
     return {**r1, **s1}

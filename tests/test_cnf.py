@@ -171,10 +171,12 @@ def test_standardize_variables(f, expected):
 @pytest.mark.parametrize('f, expected', [
     ('*x: x', '_H1(x)'),
     ('*x: P', 'P'),
+    ('*x: f(x, P)', 'f(_H1(x), P)'),
+    ('*x: H(x, P)', 'H(_H1(x), P)'),
     ('?x: x', '_C1'),
     ('?x: P', 'P'),
-
-    ('*x: x & x', '_H1(x) & _H1(x)'),
+    ('?x: f(x, P)', 'f(_C1, P)'),
+    ('?x: H(x, P)', 'H(_C1, P)'),
 
     ('*x, *y: x & y', '_H1(x) & _H2(x, y)'),
     ('*x, ?y: x & y', '_H1(x) & _H2(x)'),
@@ -198,11 +200,8 @@ def test_skolemize(f, expected):
 
 
 @pytest.mark.parametrize('f, expected', [
-    ('x & y', 'x & y'),
-    ('x | y', 'x | y'),
-    ('!x & (y | z)', '!x & (y | z)'),
-
     ('!x | (y & z)', '(!x | y) & (!x | z)'),
+    ('!x | (y & (!z | (a & b)))', '(!x | y) & (!x | !z | a) & (!x | !z | b)'),
 ])
 def test_distribute_conjunction(f, expected):
     f = parse(f)
