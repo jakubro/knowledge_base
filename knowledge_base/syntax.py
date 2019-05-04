@@ -1,6 +1,6 @@
 import copy
 import json
-from typing import Callable, Dict, Iterator, List, NamedTuple, TypeVar, Union
+from typing import Callable, Dict, List, NamedTuple, TypeVar, Union
 
 import yaml
 import yaml.representer
@@ -69,6 +69,11 @@ class Node(NamedTuple):
     #: Node has 0-N children.
     children: T_Children
 
+    def __hash__(self, *args, **kwargs):
+        return hash((self.type_,
+                     self.value,
+                     tuple(self.children)))
+
     # Expressions
     # -------------------------------------------------------------------------
 
@@ -85,12 +90,12 @@ class Node(NamedTuple):
     # Atomic Expressions
     # -------------------------------------------------------------------------
 
-    def _is_atomic(self) -> bool:
+    def is_atomic(self) -> bool:
         return (self.is_constant()
                 or self.is_variable()
                 or self.is_function()
                 or self.is_predicate()
-                or (self.is_negation() and self.children[0]._is_atomic()))
+                or (self.is_negation() and self.children[0].is_atomic()))
 
     def is_constant(self) -> bool:
         """:returns: Whether the node is a constant."""
@@ -253,28 +258,17 @@ class Node(NamedTuple):
 
         return (self._is_cnf_conjunction()
                 or self._is_cnf_disjunction()
-                or self._is_atomic())
+                or self.is_atomic())
 
     def _is_cnf_conjunction(self) -> bool:
         return (self.is_conjunction()
-                and all((x._is_cnf_disjunction() or x._is_atomic())
+                and all((x._is_cnf_disjunction() or x.is_atomic())
                         for x in self.children))
 
     def _is_cnf_disjunction(self) -> bool:
         return (self.is_disjunction()
-                and all(x._is_atomic()
+                and all(x.is_atomic()
                         for x in self.children))
-
-    def as_disjunction_clauses(self) -> Iterator['Node']:
-        """:returns: Iterator with disjunction clauses."""
-
-        assert self.is_cnf()
-        if self.is_conjunction():
-            for k in self.children:
-                yield from k.as_disjunction_clauses()
-        else:
-            assert self._is_atomic()
-            yield self
 
     # Normalization
     # -------------------------------------------------------------------------

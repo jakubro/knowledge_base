@@ -4,10 +4,10 @@ import knowledge_base.syntax as syntax
 def unify(p: syntax.Node, q: syntax.Node) -> syntax.T_Substitution:
     """Unifies two sentences via Robinson's unification algorithm."""
 
-    if not p.is_term():
+    if not p.is_atomic():
         raise TypeError("Node is not a term")
 
-    if not q.is_term():
+    if not q.is_atomic():
         raise TypeError("Node is not a term")
 
     if p.is_constant() and q.is_constant():
