@@ -44,13 +44,11 @@ from knowledge_base.grammar import parse
 ])
 def test_convert_to_cnf(f, expected):
     f = parse(f)
+
     rv = cnf.convert_to_cnf(f)
     print(rv)
 
-    try:
-        expected = parse(expected)
-    except ValueError:
-        rv = str(rv)
+    expected = parse(expected, _allow_private_symbols=True)
     assert rv == expected
 
 
@@ -60,6 +58,7 @@ def test_convert_to_cnf(f, expected):
 ])
 def test_eliminate_biconditional(f, expected):
     f = parse(f)
+
     rv = f.denormalize()
     state = syntax.WalkState.make()
     # noinspection PyTypeChecker
@@ -67,10 +66,7 @@ def test_eliminate_biconditional(f, expected):
     rv = rv.normalize()
     print(rv)
 
-    try:
-        expected = parse(expected)
-    except ValueError:
-        rv = str(rv)
+    expected = parse(expected, _allow_private_symbols=True)
     assert rv == expected
 
 
@@ -80,6 +76,7 @@ def test_eliminate_biconditional(f, expected):
 ])
 def test_eliminate_implication(f, expected):
     f = parse(f)
+
     rv = f.denormalize()
     state = syntax.WalkState.make()
     # noinspection PyTypeChecker
@@ -87,10 +84,7 @@ def test_eliminate_implication(f, expected):
     rv = rv.normalize()
     print(rv)
 
-    try:
-        expected = parse(expected)
-    except ValueError:
-        rv = str(rv)
+    expected = parse(expected, _allow_private_symbols=True)
     assert rv == expected
 
 
@@ -112,6 +106,7 @@ def test_eliminate_implication(f, expected):
 ])
 def test_propagate_negation(f, expected):
     f = parse(f)
+
     rv = f.denormalize()
     state = syntax.WalkState.make()
     # noinspection PyTypeChecker
@@ -119,10 +114,7 @@ def test_propagate_negation(f, expected):
     rv = rv.normalize()
     print(rv)
 
-    try:
-        expected = parse(expected)
-    except ValueError:
-        rv = str(rv)
+    expected = parse(expected, _allow_private_symbols=True)
     assert rv == expected
 
 
@@ -138,6 +130,7 @@ def test_propagate_negation(f, expected):
 ])
 def test_standardize_variables(f, expected):
     f = parse(f)
+
     rv = f.denormalize()
     state = syntax.WalkState.make()
     # noinspection PyTypeChecker
@@ -145,10 +138,7 @@ def test_standardize_variables(f, expected):
     rv = rv.normalize()
     print(rv)
 
-    try:
-        expected = parse(expected)
-    except ValueError:
-        rv = str(rv)
+    expected = parse(expected, _allow_private_symbols=True)
     assert rv == expected
 
 
@@ -170,6 +160,7 @@ def test_standardize_variables(f, expected):
 ])
 def test_skolemize(f, expected):
     f = parse(f)
+
     rv = f.denormalize()
     state = syntax.WalkState.make()
     # noinspection PyTypeChecker
@@ -177,10 +168,7 @@ def test_skolemize(f, expected):
     rv = rv.normalize()
     print(rv)
 
-    try:
-        expected = parse(expected)
-    except ValueError:
-        rv = str(rv)
+    expected = parse(expected, _allow_private_symbols=True)
     assert rv == expected
 
 
@@ -190,6 +178,7 @@ def test_skolemize(f, expected):
 ])
 def test_distribute_conjunction(f, expected):
     f = parse(f)
+
     rv = f.denormalize()
     state = syntax.WalkState.make()
     # noinspection PyTypeChecker
@@ -197,8 +186,5 @@ def test_distribute_conjunction(f, expected):
     rv = rv.normalize()
     print(rv)
 
-    try:
-        expected = parse(expected)
-    except ValueError:
-        rv = str(rv)
+    expected = parse(expected, _allow_private_symbols=True)
     assert rv == expected

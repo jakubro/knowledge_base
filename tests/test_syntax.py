@@ -56,7 +56,7 @@ def test_occurs_in(p, q, expected):
     q = parse(q)
     try:
         assert p.occurs_in(q) == expected
-    except TypeError as e:
+    except TypeError:
         assert expected is None
 
 
@@ -74,12 +74,6 @@ def test_apply_substitution(p, q, expected):
     q = _parse_subsitution(q)
     expected = parse(expected)
     assert p.apply(q) == expected
-
-
-def _parse_subsitution(subs):
-    return ({k: parse(v) for k, v in subs.items()}
-            if subs is not None
-            else None)
 
 
 @pytest.mark.parametrize('p', [
@@ -113,3 +107,9 @@ def test_serialization(p):
     f = parse(p)
     assert f == syntax.Node.loads(f.dumps())
     assert f == parse(str(f))
+
+
+def _parse_subsitution(subs):
+    return ({k: parse(v) for k, v in subs.items()}
+            if subs is not None
+            else None)

@@ -31,27 +31,31 @@ def test_unify(p, q, expected):
     p = parse(p)
     q = parse(q)
     expected = _parse_subsitution(expected)
+
     print('p=', p)
     print('q=', q)
     print('expected mgu(p,q)=', expected)
 
     try:
-        rv = unification.unify(p, q)
+        subs = unification.unify(p, q)
     except ValueError:
-        rv = None
-    print('mgu(p,q)=', rv)
+        subs = None
 
-    # Applying unifier to both expressions should yield the same result.
-    if rv is not None:
-        p1 = p.apply(rv)
-        q1 = q.apply(rv)
+    print('mgu(p,q)=', subs)
+
+    if subs is None:
+        assert p != q  # not unifiable
+    elif subs == {}:
+        assert p == q  # already unified
+    else:
+        # Applying unifier to both expressions should yield the same result.
+        p1 = p.apply(subs)
+        q1 = q.apply(subs)
         print('mgu(p,q)(p)=', p1)
         print('mgu(p,q)(q)=', q1)
         assert p1 == q1
-    else:
-        assert p != q
 
-    assert rv == expected
+    assert subs == expected
 
 
 @pytest.mark.parametrize('r, s, expected', [
@@ -75,6 +79,7 @@ def test_compose_substitutions(r, s, expected):
     r = _parse_subsitution(r)
     s = _parse_subsitution(s)
     expected = _parse_subsitution(expected)
+
     print('r=', r)
     print('s=', s)
     print('expected r*s=', expected)
@@ -82,17 +87,19 @@ def test_compose_substitutions(r, s, expected):
 
     subs = unification.compose_substitutions(r, s)
     print('r*s=', subs)
-    assert subs == expected
 
-    # Applying substitutions piecewise should yield the same result
-    # as applying composed substitution.
+    # Applying the composed substitution should yield the same result
+    # as applying substitutions piecewise.
     if expr:
-        expr = parse(expr)
-        rv = expr
+        expr = expr1 = parse(expr)
         for k in (r, s):
-            rv = rv.apply(k)
-        print('r*s(expr)=', rv)
-        assert expr.apply(subs) == rv
+            expr1 = expr1.apply(k)
+        print('r*s(expr)=', expr1)
+        assert expr.apply(subs) == expr1
+    else:
+        assert not r and not s
+
+    assert subs == expected
 
 
 def _parse_subsitution(subs):

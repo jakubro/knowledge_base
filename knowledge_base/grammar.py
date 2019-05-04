@@ -37,7 +37,7 @@ import pyparsing as pp
 import knowledge_base.syntax as syntax
 
 
-def parse(s: str) -> syntax.Node:
+def parse(s: str, _allow_private_symbols=False) -> syntax.Node:
     """Parses First-Order Logic expression into `Node`.
 
     :param s: The expression to parse.
@@ -53,7 +53,29 @@ def parse(s: str) -> syntax.Node:
     else:
         assert len(tokens) == 1
         rv: syntax.Node = tokens[0]
+
+        if not _allow_private_symbols:
+            if _has_private_symbols(rv):
+                raise ValueError("")  # todo
+
         return rv.normalize()
+
+
+def _has_private_symbols(node):
+    if not isinstance(node, syntax.Node):
+        return False
+    elif _is_private_symbol(node):
+        return False
+    else:
+        return any(_has_private_symbols(n)
+                   for n in (node.value, *node.children))
+
+
+def _is_private_symbol(node: syntax.Node) -> bool:
+    if (node.is_constant() or node.is_variable()
+            or node.is_function() or node.is_predicate()):
+        return node.value.startswith('_')
+    return False
 
 
 # noinspection PyPep8Naming
@@ -104,11 +126,13 @@ def build_grammar() -> pp.ParserElement:
 
     # Constants and Functions
 
-    ConstantSymbol << (~Keyword + ~pp.Literal('_') +
-                       pp.Word(pp.alphanums.upper(), pp.alphanums + '_'))
+    def symbol(init_chars: str) -> pp.ParserElement:
+        rv = pp.Combine(pp.Optional('_') +
+                        pp.Word(init_chars, pp.alphanums + '_'))
+        return ~Keyword + rv
 
-    VariableSymbol << (~Keyword + ~pp.Literal('_') +
-                       pp.Word(pp.alphas.lower(), pp.alphanums + '_'))
+    ConstantSymbol << symbol(pp.alphanums.upper())
+    VariableSymbol << symbol(pp.alphanums.lower())
 
     Constant << ConstantSymbol
     Constant.addParseAction(make_node(syntax.CONSTANT))

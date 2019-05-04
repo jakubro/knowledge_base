@@ -344,11 +344,4 @@ def test_parse(p, q):
         else:
             p = None
 
-    try:
-        assert p == q
-    except AssertionError as e:
-        print("Actual:")
-        print(p and p.dumps())
-        print("Expected:")
-        print(q and q.dumps())
-        raise e
+    assert p == q

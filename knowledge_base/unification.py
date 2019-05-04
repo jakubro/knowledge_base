@@ -50,9 +50,6 @@ def compose_substitutions(r: syntax.T_Substitution,
     for v, t in r.items():
         assert t.is_term()
         t = t.apply(s)
-        # exclude no-op substitutions, e.g. {'x': x} becomes {}
-        if t.is_variable() and t.value == v:
-            continue
         r1[v] = t
 
     s1 = {}
@@ -60,9 +57,12 @@ def compose_substitutions(r: syntax.T_Substitution,
         assert t.is_term()
         if v in r:
             continue
-        # exclude no-op substitutions, e.g. {'x': x} becomes {}
-        if t.is_variable() and t.value == v:
-            continue
         s1[v] = t
 
-    return {**r1, **s1}
+    rv = {}
+    for v, t in {**r1, **s1}.items():
+        if t.is_variable() and t.value == v:
+            continue
+        rv[v] = t
+
+    return rv
