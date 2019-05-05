@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Tuple
 
 import knowledge_base.cnf as cnf
 import knowledge_base.syntax as syntax
@@ -9,47 +9,58 @@ import knowledge_base.unification as unification
 _log = logging.getLogger()
 
 
-def resolve(facts: List[syntax.Node], probe: syntax.Node) -> bool:
-    f = syntax.make_formula(syntax.CONJUNCTION, [*facts, probe.negate()])
-    f = cnf.convert_to_cnf(f)
+def resolve(premises: List[syntax.Node], conclusion: syntax.Node) -> bool:
+    if not premises:
+        return True
 
     # breaks down the sentence into disjunction clauses
-    clauses: Set[syntax.Node] = ({*f.children}
-                                 if f.is_conjunction()
-                                 else {f})
+    clauses = []
+    for f in (*premises, conclusion.negate()):
+        f = cnf.convert_to_cnf(f)
+        clauses.extend(f.clause_form())
+    clauses = frozenset(clauses)
 
-    new = set()
-
+    seen = []
     while True:
         for p, q in itertools.combinations(clauses, 2):
-            resolvents = _resolve_disjunctions(p, q)
-
-            if resolvents is None:
+            if (p, q) in seen:
                 continue
+            seen.append((p, q))
 
-            if _log.level >= logging.DEBUG:
-                res = syntax.make_formula(syntax.CONJUNCTION, resolvents)
-                _log.debug(f"p: {p}")
-                _log.debug(f"q: {q}")
-                _log.debug(f"resolvents: {res}")
+            try:
+                subst, resolvents = _resolve_disjunctions(p, q)
+            except StopIteration:
+                # cannot resolve p and q
+                continue
+            else:
+                resolvents = frozenset(resolvents)
+
+            _log.debug(f"{set(p)} + {set(q)} -> " + (str(set(resolvents)
+                                                         if resolvents
+                                                         else '■')))
+
+            # new = {k.apply(subst) for k in new}
+            # clauses = {k.apply(subst) for k in clauses}
 
             if not resolvents:
-                # f is unsatisfiable, therefore probe is entailed in facts
+                # we found a contradiction therefore, therefore
+                # the conclusion is entailed by premises
                 return True
 
-            new = {*new, *resolvents}
-
-        if new.issubset(clauses):
-            # f is satisfiable, therefore probe is not entailed in facts
+            if not resolvents.issubset(clauses):
+                clauses = frozenset({*clauses, resolvents})
+                break
+        else:
+            # no new clauses can be derived, therefore
+            # the conclusion is not entailed by premises
             return False
-
-        clauses = {*clauses, *new}
 
 
 # todo: temporary renaming before resolving
 
-def _resolve_disjunctions(p: syntax.Node,
-                          q: syntax.Node) -> List[syntax.Node]:
+def _resolve_disjunctions(p: Set[syntax.Node],
+                          q: Set[syntax.Node]) -> Tuple[syntax.T_Substitution,
+                                                        Set[syntax.Node]]:
     """If the arguments are resolvable, then returns their resolvent, otherwise
     returns None.
 
@@ -69,41 +80,28 @@ def _resolve_disjunctions(p: syntax.Node,
 
     """
 
-    assert p.is_disjunction() or p.is_atomic()
-    assert q.is_disjunction() or q.is_atomic()
-
-    # break down sentences into atoms
-    p = ({*p.children} if p.is_disjunction() else {p})
-    q = ({*q.children} if q.is_disjunction() else {q})
-
-    found = False
-    resolvents = [*p, *q]
     for x, y in itertools.product(p, q):
-        subst = _resolve_atoms(x, y)
-
+        subst = _resolve_literals(x, y)
         if subst is None:
             continue
 
-        found = True
-
+        resolvents = [*p, *q]
         resolvents.remove(x)
         resolvents.remove(y)
+        resolvents = {k.apply(subst) for k in resolvents}
+        return subst, resolvents
 
-        resolvents = [r.apply(subst) for r in resolvents]
-
-    return resolvents if found else None
+    raise StopIteration()
 
 
-def _resolve_atoms(x: syntax.Node,
-                   y: syntax.Node) -> Optional[syntax.T_Substitution]:
-    """If the arguments are resolvable, then returns their unifier used to
-    produce the resolvent, otherwise returns None."""
+def _resolve_literals(x: syntax.Node,
+                      y: syntax.Node) -> Optional[syntax.T_Substitution]:
+    """If the arguments are complementary (one is positive literal, and the
+    another is its negation) literals, then returns their unifier, otherwise
+    returns None."""
 
     assert x.is_atomic()
     assert y.is_atomic()
-
-    # first-order resolution rule of inference
-    # assume: x & !x
 
     x_neg = x.is_negation()
     y_neg = y.is_negation()

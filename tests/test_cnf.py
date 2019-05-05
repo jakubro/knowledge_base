@@ -6,6 +6,9 @@ from knowledge_base.grammar import parse
 
 
 @pytest.mark.parametrize('f, expected', [
+    ('x => y', '!x | y'),
+    ('x <=> y', '(!x | y) & (x | !y)'),
+
     ('(a | b) => (x => y)', '(!a | !x | y) & (!b | !x | y)'),
 
     ('*x: x & *y: (x | y) & *z: (x | y | z)',

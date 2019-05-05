@@ -14,7 +14,8 @@ pp.ParserElement.enablePackrat()
 log = logging.getLogger()
 log.setLevel(logging.DEBUG)
 handler = logging.StreamHandler()
-formatter = logging.Formatter('%(message)s (%(asctime)s [%(levelname)s] '
-                              '%(name)s %(funcName)s %(lineno)d)')
+# formatter = logging.Formatter('%(message)s (%(asctime)s [%(levelname)s] '
+#                               '%(name)s %(funcName)s %(lineno)d)')
+formatter = logging.Formatter('%(message)s')
 handler.setFormatter(formatter)
 log.addHandler(handler)

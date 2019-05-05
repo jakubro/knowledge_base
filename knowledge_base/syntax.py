@@ -1,6 +1,8 @@
 import copy
 import json
-from typing import Callable, Dict, List, NamedTuple, TypeVar, Union
+from typing import (
+    Callable, Dict, FrozenSet, List, NamedTuple, TypeVar, Union,
+)
 
 import yaml
 import yaml.representer
@@ -72,7 +74,8 @@ class Node(NamedTuple):
     def __hash__(self, *args, **kwargs):
         return hash((self.type_,
                      self.value,
-                     tuple(self.children)))
+                     tuple(sorted(self.children,
+                                  key=lambda k: k._sort_key()))))
 
     # Expressions
     # -------------------------------------------------------------------------
@@ -91,11 +94,14 @@ class Node(NamedTuple):
     # -------------------------------------------------------------------------
 
     def is_atomic(self) -> bool:
+        return (self.is_literal()
+                or (self.is_negation() and self.children[0].is_atomic()))
+
+    def is_literal(self) -> bool:
         return (self.is_constant()
                 or self.is_variable()
                 or self.is_function()
-                or self.is_predicate()
-                or (self.is_negation() and self.children[0].is_atomic()))
+                or self.is_predicate())
 
     def is_constant(self) -> bool:
         """:returns: Whether the node is a constant."""
@@ -270,6 +276,22 @@ class Node(NamedTuple):
                 and all(x.is_atomic()
                         for x in self.children))
 
+    def clause_form(self) -> FrozenSet[FrozenSet['Node']]:
+        assert self.is_cnf()
+        if self.is_conjunction():
+            return frozenset({k._clause_form_disjunction()
+                              for k in self.children})
+        else:
+            return frozenset({self._clause_form_disjunction()})
+
+    def _clause_form_disjunction(self) -> FrozenSet['Node']:
+        if self.is_disjunction():
+            assert all(k.is_atomic() for k in self.children)
+            return frozenset({*self.children})
+        else:
+            assert self.is_atomic()
+            return frozenset({self})
+
     # Normalization
     # -------------------------------------------------------------------------
 
@@ -360,15 +382,6 @@ class Node(NamedTuple):
                 or self.is_equivalence()
                 or self.is_equality())
 
-    def _sort_key(self) -> tuple:
-        rv = [self.type_]
-        if isinstance(self.value, str):
-            rv.append(self.value)
-        else:
-            rv.extend(self.value._sort_key())
-        rv.extend((k._sort_key() for k in self.children))
-        return tuple(rv)
-
     def _sort(self) -> 'Node':
         """Sorts nodes lexicographically in a stable way."""
 
@@ -389,6 +402,47 @@ class Node(NamedTuple):
                 or self.is_disjunction()
                 or self.is_equivalence()
                 or self.is_equality())
+
+    def _sort_key(self) -> tuple:
+        if self.is_negation():
+            return self.children[0]._sort_key()
+
+        rv = [self.type_]
+        if isinstance(self.value, str):
+            rv.append(self.value)
+        else:
+            rv.extend(self.value._sort_key())
+        rv.extend((k._sort_key() for k in self.children))
+        return tuple(rv)
+
+    # Evaluation (todo: only propositional logic)
+    # -------------------------------------------------------------------------
+
+    def eval(self, **kwargs):
+        if self.is_function() or self.is_predicate():
+            raise TypeError()
+        elif self.is_quantified() or self.is_quantifier():
+            raise TypeError()
+        elif self.is_equality():
+            raise TypeError()
+        elif self.is_variable() or self.is_constant():
+            return kwargs[self.value]
+        elif self.is_negation():
+            return not self.children[0].eval(**kwargs)
+        elif self.is_conjunction():
+            return all(k.eval(**kwargs) for k in self.children)
+        elif self.is_disjunction():
+            return any(k.eval(**kwargs) for k in self.children)
+        elif self.is_implication():
+            fd = self._fold()
+            a, b = fd.children
+            return not a.eval(**kwargs) or b.eval(**kwargs)
+        else:
+            assert self.is_equivalence()
+            fd = self._fold()
+            a, b = fd.children
+            return ((not a.eval(**kwargs) or b.eval(**kwargs))
+                    and (not b.eval(**kwargs) or a.eval(**kwargs)))
 
     # Serialization
     # -------------------------------------------------------------------------
@@ -435,32 +489,34 @@ class Node(NamedTuple):
     # -------------------------------------------------------------------------
 
     def __str__(self):
-        if self.is_constant() or self.is_variable():
-            return self.value
+        t = self._sort()
 
-        elif self.is_equality():
-            return self._infix_str(' = ')
+        if t.is_constant() or t.is_variable():
+            return t.value
 
-        elif self.is_function() or self.is_predicate():
-            body = self._infix_str(', ')
-            return f'{self.value}({body})'
+        elif t.is_equality():
+            return t._infix_str(' = ')
 
-        elif self.is_negation():
-            child = self.children[0]
-            return f'!{self._enclose(child)}'
+        elif t.is_function() or t.is_predicate():
+            body = t._infix_str(', ')
+            return f'{t.value}({body})'
 
-        elif self.is_quantified():
-            child = self.children[0]
-            return f'{self.value}: {self._enclose(child)}'
+        elif t.is_negation():
+            child = t.children[0]
+            return f'!{t._enclose(child)}'
 
-        elif self.is_quantifier():
-            child = self.children[0]
-            return f'{self._quantifier_str()}{self._enclose(child)}'
+        elif t.is_quantified():
+            child = t.children[0]
+            return f'{t.value}: {t._enclose(child)}'
+
+        elif t.is_quantifier():
+            child = t.children[0]
+            return f'{t._quantifier_str()}{t._enclose(child)}'
 
         else:
-            assert self.is_formula()
-            op = f' {self._operator_str()} '
-            return self._infix_str(op)
+            assert t.is_formula()
+            op = f' {t._operator_str()} '
+            return t._infix_str(op)
 
     __repr__ = __str__
 
