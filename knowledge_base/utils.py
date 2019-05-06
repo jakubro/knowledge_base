@@ -1,3 +1,4 @@
+import itertools
 from typing import List
 
 
@@ -32,3 +33,40 @@ def justify_table(table: List[list], fillchar=" ", separator="\t") -> str:
             rv += col.ljust(maxlens[i], fillchar) + separator
         rv += "\n"
     return rv
+
+
+def truth_table(node, **kwargs) -> List[list]:
+    # assumes that the variables are already standardized (there are no
+    # nested variables with the same name - `?x: ?x: x`)
+
+    quant_symbols = sorted(set(_find_quantified_symbols(node)))
+    free_symbols = sorted(set(_find_symbols(node)) - set(quant_symbols))
+    symbols = free_symbols + quant_symbols
+
+    space = [[False, True]] * len(free_symbols)
+    for k in quant_symbols:
+        space.append(kwargs[k])
+
+    rv = []
+    for values in itertools.product(*space):
+        kws = {k: v for k, v in zip(symbols, values)}
+        kws = {**kwargs, **kws}
+        evaled = node.eval(**kws)
+        rv.append([*values, evaled])
+    return rv
+
+
+def _find_symbols(node):
+    if node.is_variable() or node.is_constant():
+        yield node.value
+    else:
+        for x in node.children:
+            yield from _find_symbols(x)
+
+
+def _find_quantified_symbols(node):
+    if node.is_quantified():
+        yield node.get_quantified_variable().value
+    else:
+        for x in node.children:
+            yield from _find_quantified_symbols(x)

@@ -32,6 +32,8 @@ Parenthesis:
 
 """
 
+from typing import Dict
+
 import pyparsing as pp
 
 import knowledge_base.syntax as syntax
@@ -61,11 +63,19 @@ def parse(s: str, _allow_private_symbols=False) -> syntax.Node:
         return rv.normalize()
 
 
+def parse_substitution(subst: Dict[str, str],
+                       _allow_private_symbols=False) -> syntax.T_Substitution:
+    return ({k: parse(v, _allow_private_symbols=_allow_private_symbols)
+             for k, v in subst.items()}
+            if subst is not None
+            else None)
+
+
 def _has_private_symbols(node):
     if not isinstance(node, syntax.Node):
         return False
     elif _is_private_symbol(node):
-        return False
+        return True
     else:
         return any(_has_private_symbols(n)
                    for n in (node.value, *node.children))

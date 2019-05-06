@@ -44,8 +44,6 @@ def main():
     parser.add_argument(
         '-vv', '--debug', action='store_true',
         help="Be even more verbose.")
-    # parser.add_argument(
-    #     'action', choices=['solve', 'play'])
     args = parser.parse_args()
     setup_logging(args)
 

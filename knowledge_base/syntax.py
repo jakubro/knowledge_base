@@ -1,8 +1,6 @@
 import copy
 import json
-from typing import (
-    Callable, Dict, FrozenSet, List, NamedTuple, TypeVar, Union,
-)
+from typing import Callable, Dict, FrozenSet, List, NamedTuple, TypeVar, Union
 
 import yaml
 import yaml.representer
@@ -72,10 +70,8 @@ class Node(NamedTuple):
     children: T_Children
 
     def __hash__(self, *args, **kwargs):
-        return hash((self.type_,
-                     self.value,
-                     tuple(sorted(self.children,
-                                  key=lambda k: k._sort_key()))))
+        node = self._sort()
+        return hash((node.type_, node.value, tuple(node.children)))
 
     # Expressions
     # -------------------------------------------------------------------------
@@ -236,6 +232,7 @@ class Node(NamedTuple):
             for c in node.children:
                 if c.is_variable() and c.value == self.value:
                     return True
+
         return any(self.occurs_in(c) for c in node.children)
 
     def apply(self, substitutions: T_Substitution) -> 'Node':
@@ -251,10 +248,34 @@ class Node(NamedTuple):
                     return v
             return self
         else:
-            return Node(type_=self.type_,
-                        value=self.value,
-                        children=[c.apply(substitutions)
-                                  for c in self.children])
+            rv = Node(type_=self.type_,
+                      value=(self.value.apply(substitutions)
+                             if isinstance(self.value, Node)
+                             else self.value),
+                      children=[c.apply(substitutions)
+                                for c in self.children])
+            rv = rv._sort()
+            return rv
+
+    def replace(self, substitutions: T_Substitution) -> 'Node':
+        rv = self
+
+        if (self.is_constant() or self.is_variable()
+                or self.is_function() or self.is_predicate()):
+            for k, v in substitutions.items():
+                if k == self.value:
+                    rv = v
+                    break
+
+        value = rv.value
+        rv = Node(type_=rv.type_,
+                  value=(value.replace(substitutions)
+                         if isinstance(value, Node)
+                         else value),
+                  children=[c.replace(substitutions)
+                            for c in rv.children])
+        rv = rv._sort()
+        return rv
 
     # CNF
     # -------------------------------------------------------------------------
@@ -415,14 +436,16 @@ class Node(NamedTuple):
         rv.extend((k._sort_key() for k in self.children))
         return tuple(rv)
 
-    # Evaluation (todo: only propositional logic)
+    # Evaluation
     # -------------------------------------------------------------------------
 
     def eval(self, **kwargs):
         if self.is_function() or self.is_predicate():
-            raise TypeError()
+            func = kwargs[self.value]
+            args = (k.eval(**kwargs) for k in self.children)
+            return func(*args)
         elif self.is_quantified() or self.is_quantifier():
-            raise TypeError()
+            return self.children[0].eval(**kwargs)
         elif self.is_equality():
             raise TypeError()
         elif self.is_variable() or self.is_constant():

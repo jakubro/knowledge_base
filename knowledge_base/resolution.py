@@ -9,17 +9,25 @@ import knowledge_base.unification as unification
 _log = logging.getLogger()
 
 
-def resolve(premises: List[syntax.Node], conclusion: syntax.Node) -> bool:
+def resolve(premises: List[syntax.Node],
+            conclusion: syntax.Node,
+            ) -> Tuple[bool, Optional[syntax.T_Substitution]]:
     if not premises:
-        return True
+        return True, {}
 
     # breaks down the sentence into disjunction clauses
+
     clauses = []
-    for f in (*premises, conclusion.negate()):
-        f = cnf.convert_to_cnf(f)
+    for f in premises:
+        f, _ = cnf.convert_to_cnf(f)
         clauses.extend(f.clause_form())
+
+    f, replaced = cnf.convert_to_cnf(conclusion.negate())
+    clauses.extend(f.clause_form())
+
     clauses = frozenset(clauses)
 
+    answer = {}
     seen = []
     while True:
         for p, q in itertools.combinations(clauses, 2):
@@ -39,13 +47,12 @@ def resolve(premises: List[syntax.Node], conclusion: syntax.Node) -> bool:
                                                          if resolvents
                                                          else '■')))
 
-            # new = {k.apply(subst) for k in new}
-            # clauses = {k.apply(subst) for k in clauses}
+            answer = unification.compose_substitutions(answer, subst)
 
             if not resolvents:
                 # we found a contradiction therefore, therefore
                 # the conclusion is entailed by premises
-                return True
+                return True, _apply(replaced, answer)
 
             if not resolvents.issubset(clauses):
                 clauses = frozenset({*clauses, resolvents})
@@ -53,7 +60,19 @@ def resolve(premises: List[syntax.Node], conclusion: syntax.Node) -> bool:
         else:
             # no new clauses can be derived, therefore
             # the conclusion is not entailed by premises
-            return False
+            return False, None
+
+
+def _apply(p: syntax.T_Substitution,
+           q: syntax.T_Substitution) -> syntax.T_Substitution:
+    rv = {}
+    for k, v in p.items():
+        k2 = p[k]
+        assert k2.is_variable()
+        k2 = k2.value
+        v2 = q[k]
+        rv[k2] = v2
+    return rv
 
 
 # todo: temporary renaming before resolving

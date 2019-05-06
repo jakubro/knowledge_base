@@ -2,57 +2,41 @@ import pytest
 
 import knowledge_base.cnf as cnf
 import knowledge_base.syntax as syntax
-from knowledge_base.grammar import parse
+import knowledge_base.unification as unification
+import knowledge_base.utils as utils
+from knowledge_base.grammar import parse, parse_substitution
 
 
-@pytest.mark.parametrize('f, expected', [
-    ('x => y', '!x | y'),
-    ('x <=> y', '(!x | y) & (x | !y)'),
+@pytest.mark.parametrize('f', [
+    'x => y',
+    'x <=> y',
+    '(a | b) => (x => y)',
 
-    ('(a | b) => (x => y)', '(!a | !x | y) & (!b | !x | y)'),
-
-    ('*x: x & *y: (x | y) & *z: (x | y | z)',
-     '(_v1 | _v2) & (_v1 | _v2 | _v3) & _v1'),
-
-    ('*x: x & *y: (x | y) & ?z: (x | y | z)',
-     '(_H1(_v1, _v2) | _v1 | _v2) & (_v1 | _v2) & _v1'),
-
-    ('*x: x & ?y: (x | y) & *z: (x | y | z)',
-     '(_H1(_v1) | _v1) & (_H1(_v1) | _v1 | _v3) & _v1'),
-
-    ('*x: x & ?y: (x | y) & ?z: (x | y | z)',
-     '(_H1(_v1) | _H2(_v1) | _v1) & (_H1(_v1) | _v1) & _v1'),
-
-    ('?x: x & *y: (x | y) & *z: (x | y | z)',
-     '_C1 & (_C1 | _v2) & (_C1 | _v2 | _v3)'),
-
-    ('?x: x & *y: (x | y) & ?z: (x | y | z)',
-     '_C1 & (_C1 | _H1(_v2) | _v2) & (_C1 | _v2)'),
-
-    ('?x: x & ?y: (x | y) & *z: (x | y | z)',
-     '_C1 & (_C1 | _C2) & (_C1 | _C2 | _v3)'),
-
-    ('?x: x & ?y: (x | y) & ?z: (x | y | z)',
-     '_C1 & (_C1 | _C2) & (_C1 | _C2 | _C3)'),
+    '*x: x & *y: (x | y) & *z: (x | y | z)',
+    '*x: x & *y: (x | y) & ?z: (x | y | z)',
+    '*x: x & ?y: (x | y) & *z: (x | y | z)',
+    '*x: x & ?y: (x | y) & ?z: (x | y | z)',
+    '?x: x & *y: (x | y) & *z: (x | y | z)',
+    '?x: x & *y: (x | y) & ?z: (x | y | z)',
+    '?x: x & ?y: (x | y) & *z: (x | y | z)',
+    '?x: x & ?y: (x | y) & ?z: (x | y | z)',
 
     # Already in CNF
-    ('x', 'x'),
-    ('P', 'P'),
-    ('H(x, y, P, Q)', 'H(x, y, P, Q)'),
-    ('f(x, y, P, Q)', 'f(x, y, P, Q)'),
-    ('!x', '!x'),
-    ('x & y & !z', 'x & y & !z'),
-    ('x | y | !z', 'x | y | !z'),
-    ('(x | y | !z) & (!a | b)', '(x | y | !z) & (!a | b)'),
+    'x',
+    'P',
+    'H(x, y, P, Q)',
+    'f(x, y, P, Q)',
+    '!x',
+    'x & y & !z',
+    'x | y | !z',
+    '(x | y | !z) & (!a | b)',
 ])
-def test_convert_to_cnf(f, expected):
+def test_convert_to_cnf(f):
     f = parse(f)
 
-    rv = cnf.convert_to_cnf(f)
-    print(rv)
-
-    expected = parse(expected, _allow_private_symbols=True)
-    assert rv == expected
+    rv, replaced = cnf.convert_to_cnf(f)
+    print('rv =', rv)
+    assert rv.is_cnf()
 
 
 @pytest.mark.parametrize('f, expected', [
@@ -61,16 +45,13 @@ def test_convert_to_cnf(f, expected):
 ])
 def test_eliminate_biconditional(f, expected):
     f = parse(f)
+    expected = parse(expected, True)
 
-    rv = f.denormalize()
-    state = syntax.WalkState.make()
-    # noinspection PyTypeChecker
-    rv = syntax.walk(rv, cnf._eliminate_biconditional, state)
-    rv = rv.normalize()
-    print(rv)
-
-    expected = parse(expected, _allow_private_symbols=True)
+    rv = _walk(f, cnf._eliminate_biconditional)
     assert rv == expected
+
+    f_tt, rv_tt = (utils.truth_table(k) for k in (f, rv))
+    assert f_tt == rv_tt
 
 
 @pytest.mark.parametrize('f, expected', [
@@ -79,100 +60,100 @@ def test_eliminate_biconditional(f, expected):
 ])
 def test_eliminate_implication(f, expected):
     f = parse(f)
+    expected = parse(expected, True)
 
-    rv = f.denormalize()
-    state = syntax.WalkState.make()
-    # noinspection PyTypeChecker
-    rv = syntax.walk(rv, cnf._eliminate_implication, state)
-    rv = rv.normalize()
-    print(rv)
-
-    expected = parse(expected, _allow_private_symbols=True)
+    rv = _walk(f, cnf._eliminate_implication)
     assert rv == expected
 
+    f_tt, rv_tt = (utils.truth_table(k) for k in (f, rv))
+    assert f_tt == rv_tt
 
-@pytest.mark.parametrize('f, expected', [
-    ('!x', '!x'),
-    ('!!x', 'x'),
-    ('!!!x', '!x'),
-    ('!!!!x', 'x'),
 
-    ('!(x & y)', '!x | !y'),
-    ('!(x | y)', '!x & !y'),
-
-    ('!((x | y | z) & !(!a & !b & !c))', '(!x & !y & !z) | (!a & !b & !c)'),
-
-    ('!(*x: T(x))', '?x: !T(x)'),
-    ('!(?x: T(x))', '*x: !T(x)'),
-
-    ('!(*x, ?y, *z: T(x))', '?x, *y, ?z: !T(x)'),
+@pytest.mark.parametrize('f, expected, eval_kwargs', [
+    ('!x', '!x', {}),
+    ('!!x', 'x', {}),
+    ('!(x & y)', '!x | !y', {}),
+    ('!(x | y)', '!x & !y', {}),
+    ('!(*x: x)', '?x: !x', {'x': [0, 1]}),
+    ('!(?x: x)', '*x: !x', {'x': [0, 1]}),
 ])
-def test_propagate_negation(f, expected):
+def test_propagate_negation(f, expected, eval_kwargs):
     f = parse(f)
+    expected = parse(expected, True)
 
-    rv = f.denormalize()
-    state = syntax.WalkState.make()
-    # noinspection PyTypeChecker
-    rv = syntax.walk(rv, cnf._propagate_negation, state)
-    rv = rv.normalize()
-    print(rv)
-
-    expected = parse(expected, _allow_private_symbols=True)
+    rv = _walk(f, cnf._propagate_negation)
     assert rv == expected
 
+    f_tt, rv_tt = (utils.truth_table(k, **eval_kwargs) for k in (f, rv))
+    assert f_tt == rv_tt
 
-@pytest.mark.parametrize('f, expected', [
-    ('*x: x', '*_v1: _v1'),
-    ('*x: P', '*_v1: P'),
-    ('*x: f(x, P)', '*_v1: f(_v1, P)'),
-    ('*x: H(x, P)', '*_v1: H(_v1, P)'),
 
-    ('*x: x & *x: x', '*_v1: ((*_v2: _v2) & _v1)'),
-    ('*x: x & ?y: x & y & *z: x & y & z',
-     '*_v1: ((?_v2: ((*_v3: (_v1 & _v2 & _v3)) & _v1 & _v2)) & _v1)'),
+@pytest.mark.parametrize('f, expected, expected_subst, eval_kwargs', [
+    ('*x: x', '*_x: _x', {'x': '_x'}, {'_x': [0, 1]}),
+    ('*x: P', '*_x: P', {'x': '_x'}, {'_x': [0, 1]}),
+    ('*x: x & *x: x', '*_x: _x & *_x: _x', {'x': '_x'}, {'_x': [0, 1]}),
+    ('x', 'x', {}, {}),  # free variable - no replacements here
 ])
-def test_standardize_variables(f, expected):
+def test_standardize_quantified_variables(f,
+                                          expected,
+                                          expected_subst,
+                                          eval_kwargs):
     f = parse(f)
+    expected = parse(expected, True)
+    expected_subst = parse_substitution(expected_subst, True)
 
-    rv = f.denormalize()
-    state = syntax.WalkState.make()
-    # noinspection PyTypeChecker
-    rv = syntax.walk(rv, cnf._standardize_variables, state)
-    rv = rv.normalize()
-    print(rv)
-
-    expected = parse(expected, _allow_private_symbols=True)
+    rv = _walk(f, cnf._standardize_quantified_variables, expected_subst)
     assert rv == expected
 
+    # Not testing truth tables, because variables might be ambiguous in the
+    # original.
 
-@pytest.mark.parametrize('f, expected', [
-    ('*x: x', 'x'),
-    ('*x: P', 'P'),
-    ('*x: f(x, P)', 'f(x, P)'),
-    ('*x: H(x, P)', 'H(x, P)'),
-    ('?x: x', '_C1'),
-    ('?x: P', 'P'),
-    ('?x: f(x, P)', 'f(_C1, P)'),
-    ('?x: H(x, P)', 'H(_C1, P)'),
 
-    ('*x, *y: x & y', 'x & y'),
-    ('*x, ?y: x & y', '_H1(x) & x'),
-    ('?x, *y: x & y', '_C1 & y'),
-    ('?x, ?y: x & y', '_C1 & _C2'),
-    ('*a: a & ?x: x & *b: b & ?y: y', '_H1(a) & _H2(a, b) & a & b'),
+@pytest.mark.parametrize('f, expected, expected_subst, eval_kwargs', [
+    ('x', '_x', {'x': '_x'}, {}),
+    ('*x: y', '*x: _y', {'y': '_y'}, {'x': [0, 1]}),
+
+    # Not testing that quantified variables (e.g. in `*x: x` don't get
+    # rewritten, because that's not the case - we're expecting them to be
+    # already rewritten in `_standardize_quantified_variables`.
 ])
-def test_skolemize(f, expected):
+def test_standardize_free_variables(f, expected, expected_subst, eval_kwargs):
     f = parse(f)
+    expected = parse(expected, True)
+    expected_subst = parse_substitution(expected_subst, True)
 
-    rv = f.denormalize()
-    state = syntax.WalkState.make()
-    # noinspection PyTypeChecker
-    rv = syntax.walk(rv, cnf._skolemize, state)
-    rv = rv.normalize()
-    print(rv)
-
-    expected = parse(expected, _allow_private_symbols=True)
+    rv = _walk(f, cnf._standardize_free_variables, expected_subst)
     assert rv == expected
+
+    f_tt, rv_tt = (utils.truth_table(k, **eval_kwargs) for k in (f, rv))
+    assert f_tt == rv_tt
+
+
+@pytest.mark.parametrize('f, expected, expected_subst', [
+    ('*x: x', 'x', {}),
+    ('*x: P', 'P', {}),
+
+    ('?x: x', '_C1', {'x': '_C1'}),
+    ('?x: P', 'P', {}),
+
+    ('*x, *y: x & y', 'x & y', {}),
+    ('*x, ?y: x & y', 'x & _H1(x)', {'y': '_H1(x)'}),
+    ('?x, *y: x & y', '_C1 & y', {'x': '_C1'}),
+    ('?x, ?y: x & y', '_C1 & _C2', {'x': '_C1', 'y': '_C2'}),
+
+    ('*a: a & ?x: x & *b: b & ?y: y',
+     'a & _H1(a) & b & _H2(a, b)',
+     {'x': '_H1(a)', 'y': '_H2(a, b)', }),
+])
+def test_skolemize(f, expected, expected_subst):
+    f = parse(f)
+    expected = parse(expected, True)
+    expected_subst = parse_substitution(expected_subst, True)
+
+    rv = _walk(f, cnf._skolemize, expected_subst)
+    assert rv == expected
+
+    # Not testing truth tables, because we changed the structure.
 
 
 @pytest.mark.parametrize('f, expected', [
@@ -181,13 +162,55 @@ def test_skolemize(f, expected):
 ])
 def test_distribute_conjunction(f, expected):
     f = parse(f)
+    expected = parse(expected, True)
 
+    rv = _walk(f, cnf._distribute_conjunction)
+    assert rv == expected
+
+    f_tt, rv_tt = (utils.truth_table(k) for k in (f, rv))
+    assert f_tt == rv_tt
+
+
+# Helpers
+# -----------------------------------------------------------------------------
+
+def _walk(f, func, subst=None):
     rv = f.denormalize()
     state = syntax.WalkState.make()
     # noinspection PyTypeChecker
-    rv = syntax.walk(rv, cnf._distribute_conjunction, state)
+    rv = syntax.walk(rv, func, state)
     rv = rv.normalize()
-    print(rv)
+    print('rv (original) =', rv)
+    replaced = state.context.get('replaced', {})
+    rv = _normalize(rv, replaced, subst)
+    return rv
 
-    expected = parse(expected, _allow_private_symbols=True)
-    assert rv == expected
+
+def _normalize(rv, replaced, subst):
+    # Convert rv into a normalized form.
+    #
+    # Example:
+    #
+    # 1. original node `x & *x: x` was converted into `x & *vA: vA` where
+    #    `A` is some arbitrary ID.
+    # 2. state.context['replaced'] is {'vA': x}
+    # 3. we want to check whether the quantified variable `x` was replaced,
+    #    therefore we set `subst` to {'x': _x}
+    # 4. here we convert `rv` into a normalized form, i.e.
+    #    `x & *_x: _x` which we can simply compare with the expected
+    #    value
+    #
+    # Unfortunately this approach would work only with well-behaved
+    # expressions, e.g. `*x: (x & *x: x)` results in `*vA: (vA & *vB: vB)`
+    # and state.context['replaced'] is {'vA': x, 'vB': x}.
+
+    subst = subst or {}
+    replaced = {
+        k: v for k, v in
+        unification.compose_substitutions(replaced, subst).items()
+        if k in replaced
+    }
+    rv = rv.replace(replaced)
+    print('rv (normalized) =', rv)
+
+    return rv

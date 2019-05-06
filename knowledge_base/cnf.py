@@ -1,32 +1,41 @@
 import copy
+import uuid
 from typing import List, Tuple, Union
 
 import knowledge_base.syntax as syntax
-import knowledge_base.utils as utils
+import knowledge_base.unification as unification
 
 T_Value = Union[str, syntax.Node]
 T_Children = List[syntax.Node]
 
 
-def convert_to_cnf(node: syntax.Node) -> syntax.Node:
+def convert_to_cnf(node: syntax.Node) -> Tuple[syntax.Node,
+                                               syntax.T_Substitution]:
     """Converts node to CNF representation.
 
     :param node: The node to convert.
     :returns: Node in CNF.
     """
 
+    rv = {}
     node = node.denormalize()
-    for f in [_eliminate_biconditional,
+    for f in (_eliminate_biconditional,
               _eliminate_implication,
               _propagate_negation,
-              _standardize_variables,
+              _standardize_quantified_variables,
+              _standardize_free_variables,
               _skolemize,
-              _distribute_conjunction]:
-        node = syntax.walk(node, f)
+              _distribute_conjunction):
+        state = syntax.WalkState.make()
+        node = syntax.walk(node, f, state=state)
+
+        replaced = state.context.get('replaced', {})
+        assert not (replaced.keys() & rv.keys())
+        rv = unification.compose_substitutions(rv, replaced)
 
     node = node.normalize()
     assert node.is_cnf()
-    return node
+    return node, rv
 
 
 def _eliminate_biconditional(node: syntax.Node, *args) -> syntax.Node:
@@ -122,9 +131,9 @@ def _propagate_negation(node: syntax.Node, *args) -> syntax.Node:
         return syntax.make_formula(rv, children)
 
 
-def _standardize_variables(node: syntax.Node,
-                           state: syntax.WalkState) -> syntax.Node:
-    """Standardizes quantified variables by giving them to unique names.
+def _standardize_quantified_variables(node: syntax.Node,
+                                      state: syntax.WalkState) -> syntax.Node:
+    """Standardizes quantified variables by giving them unique names.
 
     :param node: The node to rewrite.
     :param state: Rewriting state.
@@ -140,6 +149,11 @@ def _standardize_variables(node: syntax.Node,
     """
 
     seen: List[syntax.Node] = state.context.setdefault('seen', [])
+    replaced: syntax.T_Substitution = state.context.setdefault('replaced', {})
+
+    # todo: replaced would not work with nested quantified formulas that
+    #  reuse the same symbol, but actually never mind - it's a corner case
+    #  I don't want to fiddle with now
 
     if node in seen:
         return node
@@ -148,11 +162,14 @@ def _standardize_variables(node: syntax.Node,
         old = node.get_quantified_variable().value
         if old.startswith('_'):
             return node  # already renamed
-        new = _new_variable_name(state)
-        state.stack.append((old, new))
+
+        new = _new_variable_name()
         qtype = node.get_quantifier_type()
         quant = syntax.make_quantifier(qtype, new)
         rv = syntax.make_formula(quant, node.children)
+
+        replaced[new] = node.get_quantified_variable()
+        state.stack.append((old, new))
         seen.append(rv)
         return rv
 
@@ -166,6 +183,40 @@ def _standardize_variables(node: syntax.Node,
                 return rv
 
         return node
+
+    else:
+        return node
+
+
+def _standardize_free_variables(node: syntax.Node,
+                                state: syntax.WalkState) -> syntax.Node:
+    """Standardizes free variables by giving them unique names.
+
+    :param node: The node to rewrite.
+    :param state: Rewriting state.
+    :returns: Rewritten node.
+    """
+
+    seen: List[syntax.Node] = state.context.setdefault('seen', [])
+    replaced: syntax.T_Substitution = state.context.setdefault('replaced', {})
+
+    if node in seen:
+        return node
+
+    if node.is_variable():
+        old = node.value
+        if old.startswith('_'):
+            return node  # already renamed
+
+        try:
+            new = next(k for k, v in replaced.items() if v.value == old)
+        except StopIteration:
+            new = _new_variable_name()
+            replaced[new] = node
+
+        rv = syntax.make_variable(new)
+        seen.append(rv)
+        return rv
 
     else:
         return node
@@ -195,6 +246,8 @@ def _skolemize(node: syntax.Node, state: syntax.WalkState) -> syntax.Node:
     universal: List[str] = state.stack[0]
     replacements: List[Tuple[str, syntax.Node]] = state.stack[1]
 
+    replaced: syntax.T_Substitution = state.context.setdefault('replaced', {})
+
     if node.is_quantified():
         qtype = node.get_quantifier_type()
         if qtype == syntax.UNIVERSAL_QUANTIFIER:
@@ -210,11 +263,13 @@ def _skolemize(node: syntax.Node, state: syntax.WalkState) -> syntax.Node:
             old = qv.value
 
             if universal:
-                name = _new_function_name(state)
+                name = _new_function_name()
                 new = syntax.make_function(name, *universal)
             else:
-                name = _new_constant_name(state)
+                name = _new_constant_name()
                 new = syntax.make_constant(name)
+
+            replaced[new.value] = qv
 
             replacements.append((old, new))
 
@@ -263,25 +318,22 @@ def _distribute_conjunction(node: syntax.Node, *args) -> syntax.Node:
 # Renaming
 # -----------------------------------------------------------------------------
 
-def _new_variable_name(state: syntax.WalkState) -> str:
+def _new_variable_name() -> str:
     """:returns: New unique variable name."""
 
-    ctx = state.context
-    counter = utils.incrementdefault(ctx, 'var_counter')
-    return f'_v{counter}'
+    id_ = uuid.uuid4().int
+    return f'_v{id_}'
 
 
-def _new_constant_name(state: syntax.WalkState) -> str:
+def _new_constant_name() -> str:
     """:returns: New unique constant name."""
 
-    ctx = state.context
-    counter = utils.incrementdefault(ctx, 'const_counter')
-    return f'_C{counter}'
+    id_ = uuid.uuid4().int
+    return f'_C{id_}'
 
 
-def _new_function_name(state: syntax.WalkState) -> str:
+def _new_function_name() -> str:
     """:returns: New unique function name."""
 
-    ctx = state.context
-    counter = utils.incrementdefault(ctx, 'func_counter')
-    return f'_H{counter}'
+    id_ = uuid.uuid4().int
+    return f'_H{id_}'

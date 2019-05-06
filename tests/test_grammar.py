@@ -4,7 +4,7 @@ import knowledge_base.syntax as syntax
 from knowledge_base.grammar import parse
 
 
-@pytest.mark.parametrize('p, q', [
+@pytest.mark.parametrize('f, expected', [
     # Symbols
     # -------------------------------------------------------------------------
 
@@ -332,16 +332,16 @@ from knowledge_base.grammar import parse
         }
     }),
 ])
-def test_parse(p, q):
-    if q is not None:
-        q = syntax.Node.loads(q)
+def test_parse(f, expected):
+    if expected is not None:
+        expected = syntax.Node.loads(expected)
 
     try:
-        p = parse(p)
+        f = parse(f)
     except ValueError as e:
-        if q is not None:
+        if expected is not None:
             raise e
         else:
-            p = None
+            f = None
 
-    assert p == q
+    assert f == expected
