@@ -57,6 +57,26 @@ def test_resolve_propositional_logic(premises, conclusion, expected):
     _test_resolve(premises, conclusion, expected)
 
 
+@pytest.mark.parametrize('premises, conclusion, expected', [
+    (['human(Socrates)', '*x: human(x) => mortal(x)'],
+     'mortal(Socrates)', True),
+    (['human(Socrates)', '*x: human(x) => mortal(x)'],
+     'immortal(Socrates)', False),
+    (['human(Socrates)', '*x: human(x) => mortal(x) | !mortal(x)'],
+     'mortal(Socrates)', False),
+    (['human(Socrates)', '*x: human(x) => mortal(x) | !mortal(x)'],
+     '!mortal(Socrates)', False),
+
+    # all Men are created equal
+    (['*x, *y: human(x) & human(y) => equal(x, y)',
+      'human(Jane)',
+      'human(Frank)'],
+     'equal(Jane, Frank)', True),
+])
+def test_resolve_first_order_logic(premises, conclusion, expected):
+    _test_resolve(premises, conclusion, expected)
+
+
 def _test_resolve(premises, conclusion, expected):
     premises = [parse(k) for k in premises]
     conclusion = parse(conclusion)
