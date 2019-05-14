@@ -1,7 +1,7 @@
 import pytest
 
-import knowledge_base.syntax as syntax
-from knowledge_base.grammar import parse
+from knowledge_base import syntax
+from knowledge_base.grammar import InvalidSyntaxError, parse
 
 
 @pytest.mark.parametrize('f, expected', [
@@ -60,6 +60,12 @@ from knowledge_base.grammar import parse
     ('f(f(x))', None),
     ('f(x & y)', None),
     ('f(*x: foo)', None),
+
+    # Private symbols are not allowed
+    ('_P', None),
+    ('_x', None),
+    ('_H(x)', None),
+    ('_f(x)', None),
 
     # Boolean operators
     # -------------------------------------------------------------------------
@@ -195,15 +201,15 @@ from knowledge_base.grammar import parse
 
     # Equals
     ('a = b', {
-        'Function': {
-            'Value': 'Equality',
+        'Predicate': {
+            'Value': '_Equality',
             'Children': [{'Variable': {'Value': 'a'}},
                          {'Variable': {'Value': 'b'}}]
         }
     }),
     ('a = b = c = d', {
-        'Function': {
-            'Value': 'Equality',
+        'Predicate': {
+            'Value': '_Equality',
             'Children': [{'Variable': {'Value': 'a'}},
                          {'Variable': {'Value': 'b'}},
                          {'Variable': {'Value': 'c'}},
@@ -216,8 +222,8 @@ from knowledge_base.grammar import parse
         'Formula': {
             'Value': 'Not',
             'Children': [{
-                'Function': {
-                    'Value': 'Equality',
+                'Predicate': {
+                    'Value': '_Equality',
                     'Children': [{'Variable': {'Value': 'a'}},
                                  {'Variable': {'Value': 'b'}}]
                 }
@@ -228,8 +234,8 @@ from knowledge_base.grammar import parse
         'Formula': {
             'Value': 'Not',
             'Children': [{
-                'Function': {
-                    'Value': 'Equality',
+                'Predicate': {
+                    'Value': '_Equality',
                     'Children': [{'Variable': {'Value': 'a'}},
                                  {'Variable': {'Value': 'b'}},
                                  {'Variable': {'Value': 'c'}},
@@ -337,8 +343,8 @@ def test_parse(f, expected):
         expected = syntax.Node.loads(expected)
 
     try:
-        f = parse(f)
-    except ValueError as e:
+        f = parse(f, _allow_partial_expression=True)
+    except InvalidSyntaxError as e:
         if expected is not None:
             raise e
         else:

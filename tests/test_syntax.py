@@ -1,6 +1,6 @@
 import pytest
 
-import knowledge_base.syntax as syntax
+from knowledge_base import syntax
 from knowledge_base.grammar import parse, parse_substitution
 
 
@@ -34,8 +34,9 @@ from knowledge_base.grammar import parse, parse_substitution
     ('f(x, y)', 'f(y, x)', False),
 ])
 def test_equivalent_expressions(p, q, expected):
-    rv = parse(p) == parse(q)
-    assert rv == expected
+    p = parse(p, _allow_partial_expression=True)
+    q = parse(q, _allow_partial_expression=True)
+    assert (p == q) == expected
 
 
 @pytest.mark.parametrize('p, q, expected', [
@@ -55,8 +56,8 @@ def test_equivalent_expressions(p, q, expected):
     ('H(c)', 'f(H(c))', None),
 ])
 def test_occurs_in(p, q, expected):
-    p = parse(p)
-    q = parse(q)
+    p = parse(p, _allow_partial_expression=True)
+    q = parse(q, _allow_partial_expression=True)
     try:
         assert p.occurs_in(q) == expected
     except TypeError:
@@ -71,7 +72,7 @@ def test_occurs_in(p, q, expected):
     ('f(x, y, H(P, z))', {'x': 'a', 'y': 'b', 'z': 'c'}, 'f(a, b, H(P, c))'),
 ])
 def test_apply_substitution(p, q, expected):
-    p = parse(p)
+    p = parse(p, _allow_partial_expression=True)
     q = parse_substitution(q)
     expected = parse(expected)
     assert p.apply(q) == expected
@@ -112,10 +113,10 @@ def test_apply_substitution(p, q, expected):
     '*x: ?y: ?z: x',
 ])
 def test_serialization(p):
-    f = parse(p)
+    f = parse(p, _allow_partial_expression=True)
 
     # Methods 'loads' and 'dumps' are inversed.
     assert f == syntax.Node.loads(f.dumps())
 
     # Methods 'parse' and '__str__' are inversed.
-    assert f == parse(str(f))
+    assert f == parse(str(f), _allow_partial_expression=True)

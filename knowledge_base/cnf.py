@@ -2,8 +2,7 @@ import copy
 import uuid
 from typing import List, Tuple, Union
 
-import knowledge_base.syntax as syntax
-import knowledge_base.unification as unification
+from knowledge_base import syntax, unification
 
 T_Value = Union[str, syntax.Node]
 T_Children = List[syntax.Node]
@@ -17,8 +16,13 @@ def convert_to_cnf(node: syntax.Node) -> Tuple[syntax.Node,
     :returns: Node in CNF.
     """
 
+    if not node.is_formula():
+        raise ValueError()  # todo: custom exc
+
     rv = {}
     node = node.denormalize()
+    assert node.is_formula()
+
     for f in (_eliminate_biconditional,
               _eliminate_implication,
               _propagate_negation,
@@ -31,9 +35,10 @@ def convert_to_cnf(node: syntax.Node) -> Tuple[syntax.Node,
 
         replaced = state.context.get('replaced', {})
         assert not (replaced.keys() & rv.keys())
-        rv = unification.compose_substitutions(rv, replaced)
+        rv = unification.compose(rv, replaced)
 
     node = node.normalize()
+    assert node.is_formula()
     assert node.is_cnf()
     return node, rv
 
@@ -44,10 +49,7 @@ def _eliminate_biconditional(node: syntax.Node, *args) -> syntax.Node:
     :param node: The node to rewrite.
     :returns: Rewritten node.
 
-    **Remarks:**
-
-    Rewrites sentences of type `A <=> B` into `(A => B) & (B => A)`.
-
+    Rewrites expressions of type `A <=> B` into `(A => B) & (B => A)`.
     """
 
     if not node.is_equivalence():
@@ -66,10 +68,7 @@ def _eliminate_implication(node: syntax.Node, *args) -> syntax.Node:
     :param node: The node to rewrite.
     :returns: Rewritten node.
 
-    **Remarks:**
-
-    Rewrites sentences of type `A => B` into `!A | B`.
-
+    Rewrites expressions of type `A => B` into `!A | B`.
     """
 
     if not node.is_implication():
@@ -86,16 +85,13 @@ def _propagate_negation(node: syntax.Node, *args) -> syntax.Node:
     :param node: The node to rewrite.
     :returns: Rewritten node.
 
-    **Remarks:**
-
-    Rewrites sentences of type:
+    Rewrites expressions of type:
 
     - `!!A` into `A`,
     - `!(A & B)` into `!A | !B`,
     - `!(A | B)` into `!A & !B`,
     - `!(*x: A)` into `?x: !A`,`
     - `!(?x: A)` into `*x: !A`.
-
     """
 
     if not node.is_negation():
@@ -139,13 +135,10 @@ def _standardize_quantified_variables(node: syntax.Node,
     :param state: Rewriting state.
     :returns: Rewritten node.
 
-    **Remarks:**
-
-    Rewrites sentences of type:
+    Rewrites expressions of type:
 
     - `*x: A(x)` into `*var_1: A(var_1)`,
     - `?x: A(x)` into `?var_1: A(var_1)`.
-
     """
 
     seen: List[syntax.Node] = state.context.setdefault('seen', [])
@@ -223,20 +216,17 @@ def _standardize_free_variables(node: syntax.Node,
 
 
 def _skolemize(node: syntax.Node, state: syntax.WalkState) -> syntax.Node:
-    """Skolemizes sentences and drops quantifiers.
+    """Skolemizes expressions and drops quantifiers.
 
     :param node: The node to rewrite.
     :param state: Rewriting state.
     :returns: Rewritten node.
 
-    **Remarks:**
-
-    Rewrites sentences of type:
+    Rewrites expressions of type:
 
     - `?x: x` into `C1`,
     - `*a: a & ?x: x` into `a & F1(a)`,
     - `*a: a & ?x: x & *b: b & ?y: y` into `a & F1(a) & b & F2(a, b)`,
-
     """
 
     if not state.stack:
@@ -294,10 +284,7 @@ def _distribute_conjunction(node: syntax.Node, *args) -> syntax.Node:
     :param node: The node to rewrite.
     :returns: Rewritten node.
 
-    **Remarks:**
-
-    Rewrites sentences of type `(A & B) | C` into `(A | C) & (B | C)`.
-
+    Rewrites expressions of type `(A & B) | C` into `(A | C) & (B | C)`.
     """
 
     if not node.is_disjunction():

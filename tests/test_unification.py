@@ -1,6 +1,6 @@
 import pytest
 
-import knowledge_base.unification as unification
+from knowledge_base import unification
 from knowledge_base.grammar import parse, parse_substitution
 
 
@@ -28,8 +28,8 @@ from knowledge_base.grammar import parse, parse_substitution
     ('H(x)', 'H(a)', {'x': 'a'}),
 ])
 def test_unify(p, q, expected):
-    p = parse(p)
-    q = parse(q)
+    p = parse(p, _allow_partial_expression=True)
+    q = parse(q, _allow_partial_expression=True)
     expected = parse_substitution(expected)
 
     print('p=', p)
@@ -38,7 +38,7 @@ def test_unify(p, q, expected):
 
     try:
         subst = unification.unify(p, q)
-    except ValueError:
+    except unification.NotUnifiable:
         subst = None
 
     print('mgu(p,q)=', subst)
@@ -70,7 +70,7 @@ def test_unify(p, q, expected):
      {'x': 'a', 'y': 'b', 'z': 'y'},
      {'x': 'F(b)', 'z': 'y'}),
 ])
-def test_compose_substitutions(r, s, expected):
+def test_compose(r, s, expected):
     expr = ' & '.join({*r.keys(), *r.values(), *s.keys(), *s.values()})
     r = parse_substitution(r)
     s = parse_substitution(s)
@@ -81,13 +81,13 @@ def test_compose_substitutions(r, s, expected):
     print('expected r*s=', expected)
     print('expr=', expr)
 
-    subst = unification.compose_substitutions(r, s)
+    subst = unification.compose(r, s)
     print('r*s=', subst)
 
     # Applying the composed substitution should yield the same result
     # as applying substitutions piecewise.
     if expr:
-        expr = expr1 = parse(expr)
+        expr = expr1 = parse(expr, _allow_partial_expression=True)
         for k in (r, s):
             expr1 = expr1.apply(k)
         print('r*s(expr)=', expr1)

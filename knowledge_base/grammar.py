@@ -36,36 +36,48 @@ from typing import Dict
 
 import pyparsing as pp
 
-import knowledge_base.syntax as syntax
+from knowledge_base import common, syntax
 
 
-def parse(s: str, _allow_private_symbols=False) -> syntax.Node:
+class InvalidSyntaxError(common.KnowledgeBaseError):
+    pass
+
+
+def parse(s: str,
+          _allow_private_symbols=False,
+          _allow_partial_expression=False) -> syntax.Node:
     """Parses First-Order Logic expression into `Node`.
 
     :param s: The expression to parse.
     :returns: Syntax tree representing the parsed expression.
-    :raises ValueError: If the expression does not have proper syntax.
+    :raises GrammarError: If the expression does not have proper syntax.
     """
 
     grammar = build_grammar()
     try:
         tokens = grammar.parseString(s, parseAll=True)
     except pp.ParseException as e:
-        raise ValueError(str(e)) from e
+        raise InvalidSyntaxError(str(e)) from e
     else:
         assert len(tokens) == 1
         rv: syntax.Node = tokens[0]
 
         if not _allow_private_symbols:
             if _has_private_symbols(rv):
-                raise ValueError("")  # todo
+                raise InvalidSyntaxError("Private symbols are not allowed")
+
+        if not _allow_partial_expression:
+            if not rv.is_formula():
+                raise InvalidSyntaxError("Expression must be a formula")
 
         return rv.normalize()
 
 
 def parse_substitution(subst: Dict[str, str],
                        _allow_private_symbols=False) -> syntax.T_Substitution:
-    return ({k: parse(v, _allow_private_symbols=_allow_private_symbols)
+    return ({k: parse(v,
+                      _allow_private_symbols=_allow_private_symbols,
+                      _allow_partial_expression=True)
              for k, v in subst.items()}
             if subst is not None
             else None)
@@ -82,18 +94,22 @@ def _has_private_symbols(node):
 
 
 def _is_private_symbol(node: syntax.Node) -> bool:
-    if (node.is_constant() or node.is_variable()
-            or node.is_function() or node.is_predicate()):
-        return node.value.startswith('_')
-    return False
+    return _is_symbol(node) and node.value.startswith('_')
+
+
+def _is_symbol(node: syntax.Node) -> bool:
+    return (node.is_constant()
+            or node.is_variable()
+            or node.is_function()
+            or (node.is_predicate() and not node.is_equality()))
 
 
 # noinspection PyPep8Naming
 def build_grammar() -> pp.ParserElement:
-    # Define each used element as `Forward`. This makes working with the
-    # grammar a lot easier.
+    # Define each used element upfront as `Forward`. This makes working with
+    # the grammar a lot easier.
 
-    Keyword = pp.Forward()
+    ReservedSymbols = pp.Forward()
     ConstantSymbol = pp.Forward()
     VariableSymbol = pp.Forward()
     Constant = pp.Forward()
@@ -121,7 +137,7 @@ def build_grammar() -> pp.ParserElement:
 
     # Equality
     VALUE_EQUAL = named(pp.Literal('='), syntax.EQUALITY)
-    VALUE_NOT_EQUAL = pp.Literal('!=')  # is parsed to NOT(VALUE_EQUAL)
+    VALUE_NOT_EQUAL = pp.Literal('!=')  # parsed as NOT(VALUE_EQUAL)
 
     # Quantifiers
     FOR_ALL = named(pp.Literal('*'), syntax.UNIVERSAL_QUANTIFIER)
@@ -130,16 +146,16 @@ def build_grammar() -> pp.ParserElement:
     # Grammar Rules
     # -----------------------------
 
-    Keyword << (NOT | AND | OR | IMPLIES | EQUALS |
-                VALUE_EQUAL | VALUE_NOT_EQUAL |
-                FOR_ALL | EXISTS)
+    ReservedSymbols << (NOT | AND | OR | IMPLIES | EQUALS |
+                        VALUE_EQUAL | VALUE_NOT_EQUAL |
+                        FOR_ALL | EXISTS)
 
     # Constants and Functions
 
     def symbol(init_chars: str) -> pp.ParserElement:
         rv = pp.Combine(pp.Optional('_') +
                         pp.Word(init_chars, pp.alphanums + '_'))
-        return ~Keyword + rv
+        return ~ReservedSymbols + rv
 
     ConstantSymbol << symbol(pp.alphanums.upper())
     VariableSymbol << symbol(pp.alphanums.lower())
@@ -163,9 +179,9 @@ def build_grammar() -> pp.ParserElement:
     Formula << (AtomicFormula ^ ComplexFormula ^ QuantifiedFormula)
 
     AtomicFormula << (Predicate ^ pp.infixNotation(Term, [
-        (VALUE_EQUAL, 2, pp.opAssoc.LEFT, binary_operator(syntax.FUNCTION)),
+        (VALUE_EQUAL, 2, pp.opAssoc.LEFT, binary_operator(syntax.PREDICATE)),
         (VALUE_NOT_EQUAL, 2, pp.opAssoc.LEFT,
-         negate_binary_operator(syntax.FUNCTION, VALUE_EQUAL)),
+         negate_binary_operator(syntax.PREDICATE, VALUE_EQUAL)),
     ]))
 
     ComplexFormula << pp.infixNotation(AtomicFormula ^ QuantifiedFormula, [

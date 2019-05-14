@@ -7,15 +7,16 @@ Notes:
 * The grammar is in `grammar.py` and data structures for representing the syntaxt tree is in `syntax.py`. `cnf.py` 
 contains code for converting syntax tree into CNF and `unification.py` contains implementation of the Robinson's 
 unification algorithm.
+* Note that this only a self-pedagogical tool. It is rather too slow for anything practical.
 
 Example grammar of first-order Peano arithmetic:
 
 ```
-*x: succ(x) != 0
-*x, *y: (succ(x) = succ(y)) => x = y
-*x: (x = 0 | ?y: x = succ(y))
-*x: add(x, 0) = x
-*x, *y: add(x, succ(y)) = succ(add(x, y))
-*x: mul(x, 0) = 0
-*x, *y: mul(x, succ(y)) = add(mul(x, y), x)
+*x: Succ(x) != 0
+*x, *y: (Succ(x) = Succ(y)) => x = y
+*x: (x = 0 | ?y: x = Succ(y))
+*x: Add(x, 0) = x
+*x, *y: Add(x, Succ(y)) = Succ(Add(x, y))
+*x: Mul(x, 0) = 0
+*x, *y: Mul(x, Succ(y)) = Add(Mul(x, y), x)
 ```

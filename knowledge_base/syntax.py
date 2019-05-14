@@ -1,6 +1,8 @@
 import copy
 import json
-from typing import Callable, Dict, FrozenSet, List, NamedTuple, TypeVar, Union
+from typing import (
+    Callable, Dict, FrozenSet, List, NamedTuple, Tuple, TypeVar, Union,
+)
 
 import yaml
 import yaml.representer
@@ -34,12 +36,13 @@ DISJUNCTION = 'Or'
 IMPLICATION = 'Implies'
 EQUIVALENCE = 'Equals'
 
-# Equality
-EQUALITY = 'Equality'
-
 # Quantifiers
 UNIVERSAL_QUANTIFIER = 'ForAll'
 EXISTENTIAL_QUANTIFIER = 'Exists'
+
+# Equality (Encoded as a predicate with `value` set to this constant - that's
+# the reason for the leading underscore.)
+EQUALITY = '_Equality'
 
 # Syntax Tree Node
 # -----------------------------------------------------------------------------
@@ -73,31 +76,8 @@ class Node(NamedTuple):
         node = self._sort()
         return hash((node.type_, node.value, tuple(node.children)))
 
-    # Expressions
+    # Terms, Atoms and Literals
     # -------------------------------------------------------------------------
-
-    def is_formula(self) -> bool:
-        """:returns: Whether the node is a formula."""
-
-        return self.type_ == FORMULA
-
-    def is_term(self) -> bool:
-        """:returns: Whether the node is a term."""
-
-        return self.is_constant() or self.is_variable() or self.is_function()
-
-    # Atomic Expressions
-    # -------------------------------------------------------------------------
-
-    def is_atomic(self) -> bool:
-        return (self.is_literal()
-                or (self.is_negation() and self.children[0].is_atomic()))
-
-    def is_literal(self) -> bool:
-        return (self.is_constant()
-                or self.is_variable()
-                or self.is_function()
-                or self.is_predicate())
 
     def is_constant(self) -> bool:
         """:returns: Whether the node is a constant."""
@@ -122,11 +102,55 @@ class Node(NamedTuple):
     def is_equality(self) -> bool:
         """:returns: Whether the node is an equality."""
 
-        return (self.is_function()
+        return (self.is_predicate()
                 and self.value == EQUALITY)
 
-    # Complex Expressions
+    def is_term(self) -> bool:
+        """:returns: Whether the node is a term."""
+
+        return ((self.is_constant()
+                 or self.is_variable()
+                 or self.is_function())
+                and all(k.is_term() for k in self.children))
+
+    def is_atom(self) -> bool:
+        """:returns: Whether the node is an atom."""
+
+        return (self.is_predicate()
+                and all(k.is_term() for k in self.children))
+
+    def is_literal(self) -> bool:
+        """:returns: Whether the node is a literal."""
+
+        return (self.is_atom()
+                or (self.is_negation() and self.children[0].is_atom()))
+
+    def is_formula(self):
+        """:returns: Whether the node is a well-formed formula."""
+
+        if self.is_atom():
+            return True
+        elif (self.is_negation()
+              or self.is_conjunction()
+              or self.is_disjunction()
+              or self.is_implication()
+              or self.is_equivalence()
+              or self.is_quantified()):
+            return all(k.is_formula() for k in self.children)
+        else:
+            return False
+
+    # Complex Formulas
     # -------------------------------------------------------------------------
+
+    def _is_formula(self) -> bool:
+        return self.type_ == FORMULA
+
+    def is_negation(self) -> bool:
+        """:returns: Whether the node is negated."""
+
+        return (self._is_formula()
+                and self.value == NEGATION)
 
     def negate(self) -> 'Node':
         """Negates the expression."""
@@ -138,44 +162,38 @@ class Node(NamedTuple):
         else:
             return Node(type_=FORMULA, value=NEGATION, children=[self])
 
-    def is_negation(self) -> bool:
-        """:returns: Whether the node is negated."""
-
-        return (self.is_formula()
-                and self.value == NEGATION)
-
     def is_conjunction(self) -> bool:
         """:returns: Whether the node is a conjunction."""
 
-        return (self.is_formula()
+        return (self._is_formula()
                 and self.value == CONJUNCTION)
 
     def is_disjunction(self) -> bool:
         """:returns: Whether the node is a disjunction."""
 
-        return (self.is_formula()
+        return (self._is_formula()
                 and self.value == DISJUNCTION)
 
     def is_implication(self) -> bool:
         """:returns: Whether the node is an implication."""
 
-        return (self.is_formula()
+        return (self._is_formula()
                 and self.value == IMPLICATION)
 
     def is_equivalence(self) -> bool:
         """:returns: Whether the node is an equivalence."""
 
-        return (self.is_formula()
+        return (self._is_formula()
                 and self.value == EQUIVALENCE)
 
-    # Quantified Expressions
+    # Quantified Formulas
     # -------------------------------------------------------------------------
 
     def is_quantified(self) -> bool:
         """:returns: Whether the node is a quantified formula."""
 
         value = self.value
-        return (self.is_formula()
+        return (self._is_formula()
                 and isinstance(value, Node)
                 and value.is_quantifier())
 
@@ -217,6 +235,10 @@ class Node(NamedTuple):
 
     # Substitutions
     # -------------------------------------------------------------------------
+
+    def unify(self, node: 'Node') -> T_Substitution:
+        from knowledge_base import unification
+        return unification.unify(self, node)
 
     def occurs_in(self, node: 'Node') -> bool:
         """
@@ -264,7 +286,7 @@ class Node(NamedTuple):
                 or self.is_function() or self.is_predicate()):
             for k, v in substitutions.items():
                 if k == self.value:
-                    rv = v
+                    rv = v.replace(substitutions)
                     break
 
         value = rv.value
@@ -277,28 +299,54 @@ class Node(NamedTuple):
         rv = rv._sort()
         return rv
 
+    def replace2(self: 'Node', r: 'Node', t: 'Node') -> 'Node':
+        # todo: proper name
+
+        rv = self
+
+        if (self.is_constant() or self.is_variable()
+                or self.is_function() or self.is_predicate()):
+            if r == self:
+                rv = t
+
+        value = rv.value
+        rv = Node(type_=rv.type_,
+                  value=(value.replace2(r, t)
+                         if isinstance(value, Node)
+                         else value),
+                  children=[c.replace2(r, t)
+                            for c in rv.children])
+        rv = rv._sort()
+        return rv
+
     # CNF
     # -------------------------------------------------------------------------
+
+    def to_cnf(self) -> Tuple['Node', T_Substitution]:
+        from knowledge_base import cnf
+        return cnf.convert_to_cnf(self)
 
     def is_cnf(self) -> bool:
         """:returns: Whether the node is in CNF."""
 
-        return (self._is_cnf_conjunction()
-                or self._is_cnf_disjunction()
-                or self.is_atomic())
+        return self.is_formula() and (self._is_cnf_conjunction()
+                                      or self._is_cnf_disjunction()
+                                      or self.is_literal())
 
     def _is_cnf_conjunction(self) -> bool:
         return (self.is_conjunction()
-                and all((x._is_cnf_disjunction() or x.is_atomic())
-                        for x in self.children))
+                and all((k._is_cnf_disjunction()
+                         or k.is_literal())
+                        for k in self.children))
 
     def _is_cnf_disjunction(self) -> bool:
         return (self.is_disjunction()
-                and all(x.is_atomic()
-                        for x in self.children))
+                and all(k.is_literal()
+                        for k in self.children))
 
-    def clause_form(self) -> FrozenSet[FrozenSet['Node']]:
+    def to_clause_form(self) -> FrozenSet[FrozenSet['Node']]:
         assert self.is_cnf()
+
         if self.is_conjunction():
             return frozenset({k._clause_form_disjunction()
                               for k in self.children})
@@ -307,10 +355,8 @@ class Node(NamedTuple):
 
     def _clause_form_disjunction(self) -> FrozenSet['Node']:
         if self.is_disjunction():
-            assert all(k.is_atomic() for k in self.children)
             return frozenset({*self.children})
         else:
-            assert self.is_atomic()
             return frozenset({self})
 
     # Normalization
@@ -440,32 +486,42 @@ class Node(NamedTuple):
     # -------------------------------------------------------------------------
 
     def eval(self, **kwargs):
-        if self.is_function() or self.is_predicate():
-            func = kwargs[self.value]
+        if self.is_equality():
+            a, b = (k.eval(**kwargs) for k in self.children)
+            return a == b
+
+        elif self.is_function() or self.is_predicate():
+            # todo: move the default value into truth_table
+            #  (i.e. first collect function/predicate symbols)
+            func = kwargs.get(self.value, lambda *func_args: all(func_args))
             args = (k.eval(**kwargs) for k in self.children)
             return func(*args)
+
         elif self.is_quantified() or self.is_quantifier():
             return self.children[0].eval(**kwargs)
-        elif self.is_equality():
-            raise TypeError()
+
         elif self.is_variable() or self.is_constant():
             return kwargs[self.value]
+
         elif self.is_negation():
             return not self.children[0].eval(**kwargs)
+
         elif self.is_conjunction():
             return all(k.eval(**kwargs) for k in self.children)
+
         elif self.is_disjunction():
             return any(k.eval(**kwargs) for k in self.children)
+
         elif self.is_implication():
             fd = self._fold()
-            a, b = fd.children
-            return not a.eval(**kwargs) or b.eval(**kwargs)
+            a, b = (k.eval(**kwargs) for k in fd.children)
+            return not a or b
+
         else:
             assert self.is_equivalence()
             fd = self._fold()
-            a, b = fd.children
-            return ((not a.eval(**kwargs) or b.eval(**kwargs))
-                    and (not b.eval(**kwargs) or a.eval(**kwargs)))
+            a, b = (k.eval(**kwargs) for k in fd.children)
+            return (not a or b) and (a or not b)
 
     # Serialization
     # -------------------------------------------------------------------------
@@ -537,7 +593,7 @@ class Node(NamedTuple):
             return f'{t._quantifier_str()}{t._enclose(child)}'
 
         else:
-            assert t.is_formula()
+            assert t._is_formula()
             op = f' {t._operator_str()} '
             return t._infix_str(op)
 
@@ -589,7 +645,7 @@ class Node(NamedTuple):
             return not ((self.is_quantified() and child.is_quantified())
                         or child.is_constant()
                         or child.is_variable()
-                        or child.is_function()
+                        or child.is_function()  # equality handled via `ops`
                         or child.is_predicate())
 
 

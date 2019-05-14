@@ -4,9 +4,7 @@ from typing import List
 
 import pyparsing as pp
 
-import knowledge_base.grammar as grammar
-import knowledge_base.resolution as resolution
-import knowledge_base.syntax as syntax
+from knowledge_base import grammar, syntax, inference
 
 pp.ParserElement.enablePackrat()
 
@@ -33,7 +31,7 @@ class KnowledgeBase:
             return False
 
     def prove(self, f: syntax.Node) -> bool:
-        return resolution.resolve(self._facts, f)
+        return inference.infer(self._facts, f)
 
 
 def main():
@@ -73,7 +71,7 @@ def main():
 
             try:
                 f = grammar.parse(rest)
-            except ValueError:
+            except grammar.InvalidSyntaxError:
                 print("Invalid syntax")
                 continue
 
@@ -87,7 +85,7 @@ def main():
 
             try:
                 f = grammar.parse(rest)
-            except ValueError:
+            except grammar.InvalidSyntaxError:
                 print("Invalid syntax")
                 continue
 
@@ -106,7 +104,7 @@ def main():
 
             try:
                 f = grammar.parse(rest)
-            except ValueError:
+            except grammar.InvalidSyntaxError:
                 print("Invalid syntax")
                 continue
 

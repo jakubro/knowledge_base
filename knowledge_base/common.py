@@ -1,0 +1,2 @@
+class KnowledgeBaseError(Exception):
+    pass

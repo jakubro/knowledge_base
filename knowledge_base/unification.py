@@ -1,30 +1,34 @@
-import knowledge_base.syntax as syntax
+from knowledge_base import common, syntax
+
+
+class NotUnifiable(common.KnowledgeBaseError):
+    pass
 
 
 def unify(p: syntax.Node, q: syntax.Node) -> syntax.T_Substitution:
-    """Unifies two sentences via Robinson's unification algorithm."""
+    """Unifies two expressions via Robinson's unification algorithm."""
 
-    if not p.is_literal():
-        raise TypeError("Node is not a literal")
+    if not p.is_term() and not p.is_atom():
+        raise TypeError(f"'{p}' is not a term and neither an atom")
 
-    if not q.is_literal():
-        raise TypeError("Node is not a literal")
+    if not q.is_term() and not q.is_atom():
+        raise TypeError(f"'{q}' is not a term and neither an atom")
 
     if p.is_constant() and q.is_constant():
         if p.value != q.value:
-            raise ValueError("Not unifiable")
+            raise NotUnifiable()
         else:
             return {}  # already unified
 
     elif p.is_variable():
         if p.occurs_in(q):
-            raise ValueError("Not unifiable")
+            raise NotUnifiable()
         else:
             return {p.value: q}
 
     elif q.is_variable():
         if q.occurs_in(p):
-            raise ValueError("Not unifiable")
+            raise NotUnifiable()
         else:
             return {q.value: p}
 
@@ -32,18 +36,25 @@ def unify(p: syntax.Node, q: syntax.Node) -> syntax.T_Substitution:
         if (p.type_ != q.type_
                 or p.value != q.value
                 or len(p.children) != len(q.children)):
-            raise ValueError("Not unifiable")
+            raise NotUnifiable()
         else:
             rv = {}
             for x, y in zip(p.children, q.children):
                 x = x.apply(rv)
                 y = y.apply(rv)
-                rv = compose_substitutions(rv, unify(x, y))
+                rv = compose(rv, unify(x, y))
             return rv
 
 
-def compose_substitutions(r: syntax.T_Substitution,
-                          s: syntax.T_Substitution) -> syntax.T_Substitution:
+def compose(*args: syntax.T_Substitution) -> syntax.T_Substitution:
+    rv = {}
+    for k in args:
+        rv = _compose(rv, k)
+    return rv
+
+
+def _compose(r: syntax.T_Substitution,
+             s: syntax.T_Substitution) -> syntax.T_Substitution:
     """Composes two substitutions."""
 
     r1 = {}
