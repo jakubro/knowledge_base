@@ -1,10 +1,11 @@
 **This is a work in progress.**
 
-An inference engine for First-Order Logic.
+An inference engine for First-Order Logic with Equality.
 
 Notes:
 
-* The grammar is in `grammar.py` and data structures for representing the syntaxt tree is in `syntax.py`. 
+* The grammar and its documentation is in `grammar.py`. Data structures for representing the syntax tree is in 
+`syntax.py`. 
 * `cnf.py` contains code for converting syntax trees into CNF, `unification.py` contains implementation of the 
 Robinson's unification algorithm and `inference.py` performs the inference via binary resolution and paramodulation.
 * Note that this only a self-pedagogical tool. It is rather too slow for anything practical.
