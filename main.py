@@ -4,7 +4,7 @@ from typing import List
 
 import pyparsing as pp
 
-from knowledge_base import grammar, syntax, inference
+from knowledge_base import grammar, inference, syntax
 
 pp.ParserElement.enablePackrat()
 
@@ -31,6 +31,9 @@ class KnowledgeBase:
             return False
 
     def prove(self, f: syntax.Node) -> bool:
+        return inference.infer(self._facts, f) is not None
+
+    def query(self, f: syntax.Node) -> syntax.T_Substitution:
         return inference.infer(self._facts, f)
 
 
@@ -47,7 +50,7 @@ def main():
 
     print("Knowledge base")
     print()
-    print("Usage: ")  # todo
+    usage()
 
     kb = KnowledgeBase()
     while True:
@@ -58,61 +61,107 @@ def main():
         command = command.lower()
         rest = rest[0].strip() if rest else None
 
-        if command == 'help':
-            pass
-
-        elif command == 'list':
-            print("\n".join(str(f) for f in kb.facts))
-
+        if command == 'list':
+            list_content(kb)
         elif command == 'axiom':
-            if not rest:
-                print("Expected 1 argument")
-                continue
-
-            try:
-                f = grammar.parse(rest)
-            except grammar.InvalidSyntaxError:
-                print("Invalid syntax")
-                continue
-
-            kb.add_axiom(f)
-            print("Axiom was added to the knowledge base.")
-
+            add_axiom(kb, rest)
         elif command == 'lemma':
-            if not rest:
-                print("Expected 1 argument")
-                continue
-
-            try:
-                f = grammar.parse(rest)
-            except grammar.InvalidSyntaxError:
-                print("Invalid syntax")
-                continue
-
-            rv = kb.add_lemma(f)
-            if rv:
-                print(f"Lemma was proven and was added to the "
-                      f"knowledge base.")
-            if rv:
-                print(f"Lemma was not proven and was not added to the "
-                      f"knowledge base.")
-
+            add_lemma(kb, rest)
         elif command == 'prove':
-            if not rest:
-                print("Expected 1 argument")
-                continue
+            prove(kb, rest)
+        elif command == 'query':
+            query(kb, rest)
+        else:
+            usage()
 
-            try:
-                f = grammar.parse(rest)
-            except grammar.InvalidSyntaxError:
-                print("Invalid syntax")
-                continue
 
-            rv = kb.prove(f)
-            if rv:
-                print(f"Formula is entailed by the knowledge base.")
-            if rv:
-                print(f"Formula is not entailed by the knowledge base.")
+def usage():
+    print("Usage: ")
+    print("""
+        help                Show this help screen
+        list                List content of the knowledge base
+        axiom <formula>     Add axiom to the knowledge base
+        lemma <formula>     Prove and add lemma to the knowledge base
+        prove <formula>     Prove formula
+        query <formula>     Shows binding list that satisfies the formula
+    """)
+
+
+def list_content(kb: KnowledgeBase) -> None:
+    for f in kb.facts:
+        print(f)
+
+
+def add_axiom(kb: KnowledgeBase, arg: str) -> None:
+    if not arg:
+        print("Error: Expected 1 argument")
+        return
+
+    try:
+        f = grammar.parse(arg)
+    except grammar.InvalidSyntaxError:
+        print("Error: Invalid syntax")
+        return
+
+    kb.add_axiom(f)
+    print("Axiom was added to the knowledge base.")
+
+
+def add_lemma(kb: KnowledgeBase, arg: str) -> None:
+    if not arg:
+        print("Error: Expected 1 argument")
+        return
+
+    try:
+        f = grammar.parse(arg)
+    except grammar.InvalidSyntaxError:
+        print("Error: Invalid syntax")
+        return
+
+    rv = kb.add_lemma(f)
+    if rv:
+        print(f"Lemma was proven and was added to the knowledge base.")
+    else:
+        print(f"Lemma was not proven and was not added to the knowledge base.")
+
+
+def prove(kb: KnowledgeBase, arg: str) -> None:
+    if not arg:
+        print("Error: Expected 1 argument")
+        return
+
+    try:
+        f = grammar.parse(arg)
+    except grammar.InvalidSyntaxError:
+        print("Error: Invalid syntax")
+        return
+
+    rv = kb.prove(f)
+    if rv:
+        print(f"Formula is entailed by the knowledge base.")
+    else:
+        print(f"Formula is not entailed by the knowledge base.")
+
+
+def query(kb: KnowledgeBase, arg: str) -> None:
+    if not arg:
+        print("Error: Expected 1 argument")
+        return
+
+    try:
+        f = grammar.parse(arg)
+    except grammar.InvalidSyntaxError:
+        print("Error: Invalid syntax")
+        return
+
+    rv = kb.query(f)
+
+    if rv is None:
+        print(f"Error: Query is not entailed by the knowledge base.")
+        return
+
+    for k, v in rv.items():
+        print(k, "\t", v)
 
 
 def setup_logging(args: argparse.Namespace) -> None:
