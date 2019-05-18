@@ -90,78 +90,81 @@ def usage():
 def list_content(kb: KnowledgeBase) -> None:
     for f in kb.facts:
         print(f)
+    print()
 
 
 def add_axiom(kb: KnowledgeBase, arg: str) -> None:
     if not arg:
-        print("Error: Expected 1 argument")
+        print("Error: Expected 1 argument\n")
         return
 
     try:
         f = grammar.parse(arg)
     except grammar.InvalidSyntaxError:
-        print("Error: Invalid syntax")
+        print("Error: Invalid syntax\n")
         return
 
     kb.add_axiom(f)
-    print("Axiom was added to the knowledge base.")
 
 
 def add_lemma(kb: KnowledgeBase, arg: str) -> None:
     if not arg:
-        print("Error: Expected 1 argument")
+        print("Error: Expected 1 argument\n")
         return
 
     try:
         f = grammar.parse(arg)
     except grammar.InvalidSyntaxError:
-        print("Error: Invalid syntax")
+        print("Error: Invalid syntax\n")
         return
 
     rv = kb.add_lemma(f)
     if rv:
-        print(f"Lemma was proven and was added to the knowledge base.")
+        print(f"Lemma was proven and was added to the "
+              f"knowledge base.\n")
     else:
-        print(f"Lemma was not proven and was not added to the knowledge base.")
+        print(f"Lemma was not proven and was not added to the "
+              f"knowledge base.\n")
 
 
 def prove(kb: KnowledgeBase, arg: str) -> None:
     if not arg:
-        print("Error: Expected 1 argument")
+        print("Error: Expected 1 argument\n")
         return
 
     try:
         f = grammar.parse(arg)
     except grammar.InvalidSyntaxError:
-        print("Error: Invalid syntax")
+        print("Error: Invalid syntax\n")
         return
 
     rv = kb.prove(f)
     if rv:
-        print(f"Formula is entailed by the knowledge base.")
+        print(f"Formula is entailed by the knowledge base.\n")
     else:
-        print(f"Formula is not entailed by the knowledge base.")
+        print(f"Formula is not entailed by the knowledge base.\n")
 
 
 def query(kb: KnowledgeBase, arg: str) -> None:
     if not arg:
-        print("Error: Expected 1 argument")
+        print("Error: Expected 1 argument\n")
         return
 
     try:
         f = grammar.parse(arg)
     except grammar.InvalidSyntaxError:
-        print("Error: Invalid syntax")
+        print("Error: Invalid syntax\n")
         return
 
     rv = kb.query(f)
 
     if rv is None:
-        print(f"Error: Query is not entailed by the knowledge base.")
+        print(f"Error: Query is not entailed by the knowledge base.\n")
         return
 
     for k, v in rv.items():
-        print(k, "\t", v)
+        print(f"{k} = {v}")
+    print()
 
 
 def setup_logging(args: argparse.Namespace) -> None:

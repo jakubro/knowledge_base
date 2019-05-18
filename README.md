@@ -39,21 +39,13 @@ Usage:
         query <formula>     Shows binding list that satisfies the formula
 
 >> axiom man(Marcus)
-Axiom was added to the knowledge base.
 >> axiom roman(Marcus)
-Axiom was added to the knowledge base.
 >> axiom *x: man(x) => person(x)
-Axiom was added to the knowledge base.
 >> axiom ruler(Caesar)
-Axiom was added to the knowledge base.
 >> axiom *x: roman(x) => loyal(x, Caesar) | hate(x, Caesar)
-Axiom was added to the knowledge base.
 >> axiom *x, ?y: loyal(x, y)
-Axiom was added to the knowledge base.
 >> axiom *x, *y: person(x) & ruler(y) & tryAssassin(x, y) => !loyal(x, y)
-Axiom was added to the knowledge base.
 >> axiom tryAssassin(Marcus, Caesar)
-Axiom was added to the knowledge base.
 >> list
 man(Marcus)
 roman(Marcus)
@@ -63,12 +55,16 @@ ruler(Caesar)
 *x: ?y: loyal(x, y)
 *x: *y: (person(x) & ruler(y) & tryAssassin(x, y) => !loyal(x, y))
 tryAssassin(Marcus, Caesar)
+
 >> prove hate(Marcus, Caesar)
 Formula is entailed by the knowledge base.
+
 >> prove loyal(Marcus, Caesar)
 Formula is not entailed by the knowledge base.
+
 >> query ?x: hate(x, Caesar)
-x        Marcus
+x = Marcus
+
 >> query ?x: !loyal(x, Caesar)
-x        Marcus
+x = Marcus
 ```
