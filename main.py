@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 from typing import List
 
@@ -40,42 +41,69 @@ class KnowledgeBase:
 def main():
     parser = argparse.ArgumentParser(description="Knowledge base")
     parser.add_argument(
+        '-p', '--path', type=str,
+        help="Path to a file where to persist content of the knowledge base.")
+    parser.add_argument(
         '-v', '--verbose', action='store_true',
         help="Be verbose.")
     parser.add_argument(
         '-vv', '--debug', action='store_true',
         help="Be even more verbose.")
     args = parser.parse_args()
+
     setup_logging(args)
 
     print("Knowledge base")
     print()
-    usage()
+    repl_usage()
 
-    kb = KnowledgeBase()
-    while True:
-        print(">> ", end="")
-        v = input()
-        command, *rest = v.split(maxsplit=1)
+    facts = None
+    if args.path:
+        try:
+            with open(args.path) as f:
+                facts = syntax.loads(f.read())
+        except IOError:
+            pass
 
-        command = command.lower()
-        rest = rest[0].strip() if rest else None
-
-        if command == 'list':
-            list_content(kb)
-        elif command == 'axiom':
-            add_axiom(kb, rest)
-        elif command == 'lemma':
-            add_lemma(kb, rest)
-        elif command == 'prove':
-            prove(kb, rest)
-        elif command == 'query':
-            query(kb, rest)
-        else:
-            usage()
+    kb = KnowledgeBase(facts=facts)
+    try:
+        while True:
+            repl_loop(kb)
+    except KeyboardInterrupt:
+        if args.path:
+            with open(args.path, 'w') as f:
+                f.write(syntax.dumps(kb.facts,
+                                     compact=False,
+                                     format_='json'))
 
 
-def usage():
+def repl_loop(kb: KnowledgeBase) -> None:
+    print(">> ", end="")
+    command = input()
+
+    command, _ = command.split('#', maxsplit=1)  # remove comments
+    command, *args = command.split(maxsplit=1)  # <verb> [args ...]
+
+    command = command.strip().lower()
+    args = [k.strip() for k in args]
+
+    if command == 'list':
+        list_content(kb)
+    elif command == 'axiom':
+        add_axiom(kb, *args)
+    elif command == 'lemma':
+        add_lemma(kb, *args)
+    elif command == 'prove':
+        prove(kb, *args)
+    elif command == 'query':
+        query(kb, *args)
+    elif command:
+        if command != 'help':
+            print(f"Error: '{command}' is not a valid command")
+        repl_usage()
+
+
+def repl_usage():
     print("Usage: ")
     print("""
         help                Show this help screen

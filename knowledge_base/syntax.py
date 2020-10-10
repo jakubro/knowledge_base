@@ -763,6 +763,41 @@ T_Deserialized = Union[Node, List[Node], str]
 T_Serialized = Union[dict, List[dict], str]
 
 
+def dumps(value: Union[Node, List[Node]],
+          compact: bool = False,
+          format_: str = 'yaml',
+          **kwargs) -> str:
+
+    rv = _dump(value, compact)
+    if format_ == 'yaml':
+        return yaml.dump(rv, **kwargs, Dumper=_YamlDumper)
+    elif format_ == 'json':
+        return json.dumps(rv, **kwargs)
+    else:
+        raise ValueError("Provided 'format_' is not valid")
+
+
+def loads(value: str) -> Union[Node, List[Node]]:
+    """Deserializes node.
+
+    :param value: Serialized node. (Must not be in a compact form.)
+    :returns: Deserialized node.
+    """
+
+    try:
+        # loads JSON as well, since JSON is a subset of YAML
+        value = yaml.load(value, Loader=yaml.SafeLoader)
+    except AttributeError:
+        pass
+
+    rv = _load(value)
+    if isinstance(rv, Node):
+        return rv.normalize()
+    else:
+        assert isinstance(rv, list)
+        return [k.normalize() for k in rv]
+
+
 def _dump(node: T_Deserialized, compact: bool) -> T_Serialized:
     """Makes serializable representation of the syntax tree."""
 
@@ -788,7 +823,6 @@ def _dump(node: T_Deserialized, compact: bool) -> T_Serialized:
     else:
         assert isinstance(node, str)
         return node
-
 
 def _load(node: T_Serialized) -> T_Deserialized:
     """Makes syntax tree from the serialized representation. Inverse of

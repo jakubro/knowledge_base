@@ -109,6 +109,32 @@ def test_infer_first_order_logic(premises, conclusion, expected):
 
 
 @pytest.mark.parametrize('premises, conclusion, expected', [
+    (['*x: Succ(x) != 0',
+      '*x, *y: (Succ(x) = Succ(y)) => x = y',
+      '*x: (x = 0 | ?y: x = Succ(y))',
+      '*x: Add(x, 0) = x',
+      '*x, *y: Add(x, Succ(y)) = Succ(Add(x, y))',
+      '*x: Mul(x, 0) = 0',
+      '*x, *y: Mul(x, Succ(y)) = Add(Mul(x, y), x)'],
+     'Mul(Succ(0), Succ(0)) = Succ(0)', True),
+
+    # all Men are created equal
+    (['*x, *y: human(x) & human(y) => x = y',
+      '*x, *y: x = y <=> y = x',  # todo: reflexivity axiom
+      'human(Jane)',
+      'human(Frank)'],
+     'Jane = Frank', True),
+
+    # there's no such Man who is not equal to another Man
+    (['*x, *y: human(x) & human(y) => x = y'],
+     '?x, ?y: human(x) & human(y) & x != y', False),
+])
+def test_infer_first_order_logic_equality(premises, conclusion, expected):
+    entailed, _ = _infer(premises, conclusion)
+    assert entailed == expected
+
+
+@pytest.mark.parametrize('premises, conclusion, expected', [
     # Who hates Caesar?
     (caesar_model, '?x: hate(x, Caesar)', {'x': 'Marcus'}),
 
